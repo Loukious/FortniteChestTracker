@@ -15,10 +15,15 @@ folder is:
 ```
 
 Use **Copy folder path**, then paste the path into the folder picker's address bar.
-Chrome and Edge can remember the chosen folder for later visits. **Use saved replay
-folder** refreshes its file list after the browser grants read access; subsequent
-folder selections also start there. Firefox and other browsers use the standard
-folder picker or **Choose files instead**.
+**Choose replay folder** uses the standard browser picker for Demos inside AppData.
+The browser may remember its last location; the site requires a new selection on
+later visits. Firefox and other browsers can also use **Choose files instead**.
+
+The optional **Choose and remember folder** button uses Chrome/Edge's persistent
+folder access. Chrome and Edge can block it for protected AppData folders with a
+system-files message; use the primary folder button for Demos. To remember a
+folder, select a copy of your replays outside AppData. **Use saved replay folder**
+refreshes that folder after read access is granted.
 
 Only `.replay` files are listed. Files last modified before the selected start date
 are skipped before their contents are read. Browsers provide the last-modified
@@ -85,11 +90,11 @@ When a change alters parsing, eligibility, ownership, or chest counts, bump
 
 ## Deploy to GitHub Pages
 
-In the destination repository's **Settings → Pages**, set **Source** to **GitHub
+In the destination repository's **Settings â†’ Pages**, set **Source** to **GitHub
 Actions**. The prepared
 [Chest Tracker Pages workflow](../../.github/workflows/chest-tracker-pages.yml)
-publishes after relevant changes reach `main`, or when started through **Actions →
-Deploy Chest Tracker to GitHub Pages → Run workflow**.
+publishes after relevant changes reach `main`, or when started through **Actions â†’
+Deploy Chest Tracker to GitHub Pages â†’ Run workflow**.
 
 The workflow installs .NET 10 and `wasm-tools`, publishes the Release browser
 project, and uploads **only** `artifacts/FortniteChestTracker.Web/wwwroot`. Keep its

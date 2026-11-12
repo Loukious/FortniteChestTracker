@@ -26,6 +26,11 @@ class Element {
   getAttribute(name) { return this.attributes.get(name); }
   removeAttribute(name) { this.attributes.delete(name); }
   addEventListener(name, listener) { this.listeners.set(name, listener); }
+  click() {
+    if (this.disabled) return;
+    this.clickCount = (this.clickCount ?? 0) + 1;
+    return this.listeners.get('click')?.();
+  }
   querySelectorAll(selector) {
     const descendants = this.children.flatMap(child => [child, ...child.querySelectorAll(selector)]);
     return descendants.filter(child => child.tagName === 'input' && child.type === 'checkbox' &&
@@ -33,7 +38,7 @@ class Element {
   }
 }
 
-function loadApp() {
+function loadApp(windowOptions = {}) {
   const elements = new Map();
   const getElement = (id) => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -60,7 +65,7 @@ function loadApp() {
     createElement: (tag) => new Element(tag),
     createDocumentFragment: () => new Element('fragment')
   };
-  const context = vm.createContext({ document, window: { addEventListener() {} }, ReplayScanner: Worker,
+  const context = vm.createContext({ document, window: { addEventListener() {}, ...windowOptions }, ReplayScanner: Worker,
     HTMLInputElement: Element, Date, Intl, console, Set, Map, WeakMap });
   vm.runInContext(source, context);
   return { elements, workers, run: code => vm.runInContext(code, context),
@@ -70,6 +75,70 @@ function loadApp() {
 function replay(name, lastModified) {
   return { name, lastModified, size: 1024, arrayBuffer() { throw new Error('File contents must not be read by the UI.'); } };
 }
+
+test('the default folder button uses the standard picker even when Chrome supports remembering', () => {
+  let nativeCalls = 0;
+  const app = loadApp({ showDirectoryPicker() { nativeCalls++; throw new Error('Protected AppData path'); } });
+  app.set('chosenFiles', [replay('existing.replay', Date.now())]);
+  app.run('acceptFiles(chosenFiles, false);');
+  app.elements.get('choose-folder').click();
+  assert.equal(app.elements.get('folder-input').clickCount, 1);
+  assert.equal(nativeCalls, 0);
+  assert.equal(app.run('state.files[0]'), app.run('chosenFiles[0]'));
+  assert.equal(app.run('state.choosing'), false);
+});
+
+test('blocked native remembering leaves the standard folder and file buttons available', async () => {
+  const app = loadApp({ async showDirectoryPicker() { throw Object.assign(new Error('Folder contains system files'), { name: 'NotAllowedError' }); } });
+  app.set('chosenFiles', [replay('existing.replay', Date.now())]);
+  app.run('acceptFiles(chosenFiles, false);');
+  await app.elements.get('choose-remember-folder').click();
+  assert.equal(app.elements.get('choose-folder').disabled, false);
+  assert.equal(app.elements.get('choose-files').disabled, false);
+  assert.equal(app.run('state.files[0]'), app.run('chosenFiles[0]'));
+  assert.match(app.elements.get('status').textContent, /Use Choose replay folder for Demos/);
+  app.elements.get('choose-folder').click();
+  assert.equal(app.elements.get('folder-input').clickCount, 1);
+  app.elements.get('choose-files').click();
+  assert.equal(app.elements.get('files-input').clickCount, 1);
+});
+
+test('cancelling the optional remember picker preserves the previous selection and status', async () => {
+  const app = loadApp({ async showDirectoryPicker() { throw Object.assign(new Error('Cancelled'), { name: 'AbortError' }); } });
+  app.set('chosenFiles', [replay('existing.replay', Date.now())]);
+  app.run('acceptFiles(chosenFiles, false);');
+  const previousStatus = app.elements.get('status').textContent;
+  await app.elements.get('choose-remember-folder').click();
+  assert.equal(app.elements.get('status').textContent, previousStatus);
+  assert.equal(app.run('state.files[0]'), app.run('chosenFiles[0]'));
+  assert.equal(app.run('state.choosing'), false);
+});
+
+test('the optional remember picker preserves nested replay paths and reads only metadata', async () => {
+  const file = replay('recent.REPLAY', Date.now());
+  const handle = { name: 'ReplayCopies', kind: 'directory', async *entries() {
+    yield ['notes.txt', { kind: 'file', getFile() { throw new Error('Non-replay metadata must not be read'); } }];
+    yield ['nested', { kind: 'directory', async *entries() { yield [file.name, { kind: 'file', async getFile() { return file; } }]; } }];
+  } };
+  let options;
+  const app = loadApp({ async showDirectoryPicker(value) { options = value; return handle; } });
+  await app.elements.get('choose-remember-folder').click();
+  assert.equal(options.mode, 'read');
+  assert.equal(app.run('state.savedFolder'), handle);
+  assert.equal(app.elements.get('use-saved-folder').hidden, false);
+  app.run('scan();');
+  assert.deepEqual(Array.from(app.workers[0].message.filePaths), ['ReplayCopies/nested/recent.REPLAY']);
+  assert.equal(app.workers[0].message.files[0], file);
+});
+
+test('browsers without native remembering keep standard folder and file selection', () => {
+  const app = loadApp();
+  assert.equal(app.elements.get('choose-remember-folder').hidden, true);
+  app.elements.get('choose-folder').click();
+  app.elements.get('choose-files').click();
+  assert.equal(app.elements.get('folder-input').clickCount, 1);
+  assert.equal(app.elements.get('files-input').clickCount, 1);
+});
 
 test('the inclusive cutoff keeps midnight and rejects older files before worker parsing', () => {
   const app = loadApp();

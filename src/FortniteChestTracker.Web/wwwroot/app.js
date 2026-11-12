@@ -2,7 +2,7 @@ import { ReplayScanner } from './scanner-pool.js';
 
 const byId = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
-  'choose-folder', 'choose-files', 'use-saved-folder', 'copy-path', 'default-folder-path', 'folder-memory-hint', 'folder-input', 'files-input', 'since', 'folder-summary',
+  'choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'copy-path', 'default-folder-path', 'folder-memory-hint', 'folder-input', 'files-input', 'since', 'folder-summary',
   'files-panel', 'selection-summary', 'select-all', 'files-body', 'scan-selection-label', 'scan',
   'status', 'cancel', 'progress', 'report', 'report-summary', 'owner-filter', 'export',
   'owner-total', 'teammate-total', 'squad-total', 'match-total', 'owners-summary', 'files-summary',
@@ -68,10 +68,8 @@ async function folderStorage(action, handle) {
 }
 
 async function restoreSavedFolder() {
-  if (typeof window.showDirectoryPicker !== 'function') {
-    ui['folder-memory-hint'].textContent = 'Choose the Demos folder using the path above. Choose files instead if your browser does not support folder selection.';
-    return;
-  }
+  ui['choose-remember-folder'].hidden = typeof window.showDirectoryPicker !== 'function';
+  if (ui['choose-remember-folder'].hidden) return;
   const version = state.savedFolderVersion;
   try {
     if (!('indexedDB' in window)) return;
@@ -80,6 +78,7 @@ async function restoreSavedFolder() {
     state.savedFolder = handle;
     ui['use-saved-folder'].hidden = false;
     ui['use-saved-folder'].title = `Open ${handle.name}`;
+    ui['folder-memory-hint'].hidden = false;
     ui['folder-memory-hint'].textContent = `Saved folder: ${handle.name}. Use it above to reload its replay files, or choose another folder.`;
   } catch {
     // Folder selection still works when this browser cannot store a handle.
@@ -91,10 +90,11 @@ async function rememberFolder(handle) {
   state.savedFolderVersion++;
   ui['use-saved-folder'].hidden = false;
   ui['use-saved-folder'].title = `Open ${handle.name}`;
+  ui['folder-memory-hint'].hidden = false;
   try {
     if (!('indexedDB' in window)) throw new Error('Storage unavailable.');
     await folderStorage('save', handle);
-    ui['folder-memory-hint'].textContent = `Saved folder: ${handle.name}. Future folder selections will start there; use the saved folder button to reload its files.`;
+    ui['folder-memory-hint'].textContent = `Saved folder: ${handle.name}. Use the saved folder button to reload its files; the optional remember picker will start there.`;
   } catch {
     ui['folder-memory-hint'].textContent = 'This folder can be reused while this page is open. Choose it again on your next visit.';
   }
@@ -128,7 +128,14 @@ async function loadFolderHandle(handle) {
   await rememberFolder(handle);
 }
 
-async function chooseFolder() {
+function chooseFolder() {
+  if (state.busy || state.choosing) return;
+  // The standard directory input supports Demos inside AppData without requesting
+  // the persistent File System Access permission Chrome blocks for sensitive paths.
+  ui['folder-input'].click();
+}
+
+async function chooseAndRememberFolder() {
   if (state.busy || state.choosing) return;
   if (typeof window.showDirectoryPicker !== 'function') {
     ui['folder-input'].click();
@@ -146,8 +153,7 @@ async function chooseFolder() {
     } else if (['SecurityError', 'NotAllowedError', 'NotSupportedError', 'TypeError'].includes(error.name)) {
       state.choosing = false;
       refreshControls();
-      ui['folder-input'].click();
-      setStatus('Choose the Demos folder using the path above. The standard folder picker is available here.');
+      setStatus('This browser blocked the remember picker. Use Choose replay folder for Demos, or Choose files instead. To remember a folder, choose a copy outside AppData.');
     } else {
       setStatus(`Could not open that folder: ${error.message || error}. Choose the replay folder again.`);
     }
@@ -308,7 +314,7 @@ function setBusy(busy) {
 
 function refreshControls() {
   const locked = state.busy || state.choosing;
-  for (const id of ['choose-folder', 'choose-files', 'use-saved-folder', 'since']) ui[id].disabled = locked;
+  for (const id of ['choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'since']) ui[id].disabled = locked;
   ui.cancel.hidden = !state.busy;
   ui.export.disabled = locked || !state.report;
   const eligibleKeys = new Set(state.eligible.map(fileKey));
@@ -534,6 +540,7 @@ function exportCsv() {
 }
 
 ui['choose-folder'].addEventListener('click', chooseFolder);
+ui['choose-remember-folder'].addEventListener('click', chooseAndRememberFolder);
 ui['use-saved-folder'].addEventListener('click', useSavedFolder);
 ui['copy-path'].addEventListener('click', copyFolderPath);
 ui['choose-files'].addEventListener('click', () => ui['files-input'].click());

@@ -14,7 +14,10 @@ miss additional openings, especially those by distant teammates.
 
 Fortnite's usual Windows replay folder is
 `%LOCALAPPDATA%\FortniteGame\Saved\Demos`. The page provides a copy button for
-this path. Supported browsers can remember the folder after you choose it once.
+this path. The standard folder picker is used for Demos inside AppData. Chrome's
+optional remember picker can block protected folders; it is available separately
+for a copied replay folder outside AppData. The standard picker may remember its
+last location through the browser.
 
 ## Development
 

@@ -26,6 +26,7 @@
       <div class="selection-controls">
         <div class="folder-actions">
           <button type="button" class="primary" id="choose-folder">Choose replay folder</button>
+          <button type="button" id="choose-remember-folder" hidden title="Optional: remember a copied replay folder outside AppData">Choose and remember folder</button>
           <button type="button" id="use-saved-folder" hidden>Use saved replay folder</button>
           <button type="button" id="choose-files">Choose files instead</button>
           <input type="file" id="folder-input" webkitdirectory multiple hidden aria-label="Choose replay folder">
@@ -38,7 +39,8 @@
         <button type="button" id="copy-path">Copy folder path</button>
       </div>
       <p id="folder-summary" class="folder-summary muted">Choose the Demos folder once using the path above.</p>
-      <p id="folder-memory-hint" class="hint">In Chrome and Edge, this browser can remember the folder you choose for later visits.</p>
+      <p class="hint">Chrome and Edge may block the remember picker for Demos inside AppData. If it reports system files, use <strong>Choose replay folder</strong> or <strong>Choose files instead</strong>.</p>
+      <p id="folder-memory-hint" class="hint" hidden></p>
       <p class="hint">Only .replay files are listed. Files last modified before the start date are skipped before their contents are read. Newer files are also checked against the match date inside the replay.</p>
     </section>
 
