@@ -65,7 +65,17 @@ jobs:
           test -f artifacts/FortniteChestTracker.Web/wwwroot/_framework/dotnet.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/GPL-3.0.txt
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/DOTNET-MIT.txt
-          sed -i "s|https://github.com/Loukious/FortniteChestTracker\"|https://github.com/Loukious/FortniteChestTracker/tree/${GITHUB_SHA}\"|g" artifacts/FortniteChestTracker.Web/wwwroot/licenses.html
+          node --input-type=module <<'JS'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          import { brotliCompressSync, gzipSync } from 'node:zlib';
+          const path = 'artifacts/FortniteChestTracker.Web/wwwroot/licenses.html';
+          const source = `https://github.com/${process.env.GITHUB_REPOSITORY}/tree/${process.env.GITHUB_SHA}`;
+          const html = readFileSync(path, 'utf8').replaceAll('https://github.com/Loukious/FortniteChestTracker"', `${source}"`);
+          const data = Buffer.from(html);
+          writeFileSync(path, data);
+          writeFileSync(`${path}.br`, brotliCompressSync(data));
+          writeFileSync(`${path}.gz`, gzipSync(data));
+          JS
           touch artifacts/FortniteChestTracker.Web/wwwroot/.nojekyll
 
       - name: Upload static site
