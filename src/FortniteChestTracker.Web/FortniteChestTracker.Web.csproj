@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <WasmMainJSPath>wwwroot/worker.js</WasmMainJSPath>
+    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <WasmBuildNative Condition="'$(Configuration)' == 'Release'">true</WasmBuildNative>
+    <PublishTrimmed>true</PublishTrimmed>
+    <JsonSerializerIsReflectionEnabledByDefault>true</JsonSerializerIsReflectionEnabledByDefault>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <TrimmerRootAssembly Include="FortniteChestTracker.Web" />
+    <TrimmerRootAssembly Include="FortniteReplayReader" />
+    <TrimmerRootAssembly Include="Unreal.Core" />
+    <TrimmerRootAssembly Include="Unreal.Encryption" />
+    <TrimmerRootAssembly Include="OozSharp" />
+    <ProjectReference Include="..\FortniteReplayReader\FortniteReplayReader.csproj" />
+    <Compile Include="..\FortniteChestTracker.Core\ChestModels.cs" Link="Core\ChestModels.cs" />
+    <Compile Include="..\FortniteChestTracker.Core\ChestEligibility.cs" Link="Core\ChestEligibility.cs" />
+    <Compile Include="..\FortniteChestTracker.Core\ChestReportBuilder.cs" Link="Core\ChestReportBuilder.cs" />
+    <Compile Include="..\FortniteChestTracker.Core\ChestMatchFactory.cs" Link="Core\ChestMatchFactory.cs" />
+    <Compile Include="..\FortniteChestTracker.Core\ReplayMetadataReader.cs" Link="Core\ReplayMetadataReader.cs" />
+  </ItemGroup>
+</Project>

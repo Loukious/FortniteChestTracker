@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="description" content="Count chests opened by you and your teammates in Fortnite replays. Replay files are processed locally in your browser.">
+  <title>Fortnite Chest Tracker</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%236988ff'/%3E%3Cpath d='M9 17h22v14H9zm2-7h18l2 5H9z' fill='%23fff'/%3E%3Cpath d='M18 17h4v7h-4z' fill='%236988ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./app.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="page-header">
+      <p class="eyebrow">FORTNITE SHOP TOKEN</p>
+      <h1>Chest Tracker</h1>
+      <p class="intro">Chests opened by the replay owner and their teammates in regular Battle Royale and Zero Build.</p>
+    </header>
+
+    <section class="panel selection-panel" aria-labelledby="selection-heading">
+      <div class="section-heading">
+        <div><h2 id="selection-heading">Choose your replay folder</h2><p class="muted">Select your saved replays, then choose which files to scan.</p></div>
+        <span class="local-badge">Files stay in your browser</span>
+      </div>
+      <div class="selection-controls">
+        <div class="folder-actions">
+          <button type="button" class="primary" id="choose-folder">Choose replay folder</button>
+          <button type="button" id="use-saved-folder" hidden>Use saved replay folder</button>
+          <button type="button" id="choose-files">Choose files instead</button>
+          <input type="file" id="folder-input" webkitdirectory multiple hidden aria-label="Choose replay folder">
+          <input type="file" id="files-input" accept=".replay" multiple hidden aria-label="Choose replay files">
+        </div>
+        <label class="date-field">Matches since (inclusive)<input type="date" id="since" value="2026-11-01" required></label>
+      </div>
+      <div class="folder-location">
+        <div><p class="path-label">Fortnite's usual Windows replay folder</p><code id="default-folder-path">%LOCALAPPDATA%\FortniteGame\Saved\Demos</code><p class="hint">Paste this into the folder picker address bar.</p></div>
+        <button type="button" id="copy-path">Copy folder path</button>
+      </div>
+      <p id="folder-summary" class="folder-summary muted">Choose the Demos folder once using the path above.</p>
+      <p id="folder-memory-hint" class="hint">In Chrome and Edge, this browser can remember the folder you choose for later visits.</p>
+      <p class="hint">Only .replay files are listed. Files last modified before the start date are skipped before their contents are read. Newer files are also checked against the match date inside the replay.</p>
+    </section>
+
+    <section class="panel files-panel" id="files-panel" hidden aria-labelledby="files-heading">
+      <div class="section-heading">
+        <div><h2 id="files-heading">Replay files</h2><p class="muted" id="selection-summary"></p></div>
+        <button type="button" class="text-button" id="select-all">Select all eligible</button>
+      </div>
+      <div class="table-scroll candidate-scroll" tabindex="0" aria-label="Replay files available for selection">
+        <table class="files-table">
+          <thead><tr><th class="check-column"><span class="sr-only">Selected</span></th><th>Replay file</th><th>Last modified</th><th>Size</th><th>Status</th></tr></thead>
+          <tbody id="files-body"></tbody>
+        </table>
+      </div>
+      <div class="scan-actions"><p class="muted" id="scan-selection-label"></p><button type="button" class="primary" id="scan" disabled>Scan selected replays</button></div>
+    </section>
+
+    <section class="status-area" aria-label="Scan status">
+      <div class="status-line"><p id="status" role="status" aria-live="polite">Choose a replay folder to get started. Nothing is uploaded.</p><button type="button" id="cancel" hidden>Cancel scan</button></div>
+      <progress id="progress" value="0" max="1" hidden aria-label="Replay scan progress"></progress>
+    </section>
+
+    <section id="report" hidden aria-labelledby="report-heading">
+      <div class="report-heading">
+        <div><h2 id="report-heading">Chest report</h2><p class="muted" id="report-summary"></p></div>
+        <div class="report-actions"><label class="owner-field">Replay owner<select id="owner-filter" aria-label="Filter by replay owner"></select></label><button type="button" id="export">Download CSV</button></div>
+      </div>
+      <div class="summary-cards">
+        <article class="summary-card"><h3>Owner · chests opened</h3><p class="summary-value" id="owner-total">—</p><p class="muted" id="owners-summary"></p></article>
+        <article class="summary-card"><h3>Teammates · chests opened</h3><p class="summary-value" id="teammate-total">—</p><p class="muted">In the included matches</p></article>
+        <article class="summary-card"><h3>Squad · chests opened</h3><p class="summary-value accent" id="squad-total">—</p><p class="muted">Owner + teammates</p></article>
+        <article class="summary-card"><h3>Included matches</h3><p class="summary-value" id="match-total">—</p><p class="muted" id="files-summary"></p></article>
+      </div>
+      <p class="coverage-note">Counts are actual chest openings recorded in replays. <strong>+</strong> means more openings may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
+      <section class="panel matches-panel" aria-labelledby="matches-heading">
+        <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted">Select a match for its squad breakdown.</p></div>
+        <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">
+          <table class="matches-table"><thead><tr><th>Match date</th><th>Mode</th><th>Replay owner</th><th class="number">Owner opened</th><th class="number">Teammates opened</th><th class="number">Squad opened</th><th>Coverage</th><th>Replay file</th></tr></thead><tbody id="matches-body"></tbody></table>
+        </div>
+        <p class="empty-state" id="matches-empty" hidden>No eligible matches found. Check Skipped files for the reasons.</p>
+      </section>
+      <section class="panel detail-panel" aria-label="Report details">
+        <div class="tabs" role="tablist" aria-label="Chest report details">
+          <button type="button" role="tab" id="squad-tab" aria-controls="squad-panel" aria-selected="true">Squad details</button>
+          <button type="button" role="tab" id="players-tab" aria-controls="players-panel" aria-selected="false" tabindex="-1">Player totals</button>
+          <button type="button" role="tab" id="skipped-tab" aria-controls="skipped-panel" aria-selected="false" tabindex="-1">Skipped files <span id="skipped-count"></span></button>
+        </div>
+        <div role="tabpanel" id="squad-panel" aria-labelledby="squad-tab">
+          <p class="detail-summary muted" id="selected-match-summary">Select a match to see its replay owner and teammates.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Selected match squad"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Chests opened</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="squad-body"></tbody></table></div>
+        </div>
+        <div role="tabpanel" id="players-panel" aria-labelledby="players-tab" hidden>
+          <p class="detail-summary muted">Totals for every player in the currently included matches.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Chest totals by player"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Matches</th><th class="number">Chests opened</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="players-body"></tbody></table></div>
+        </div>
+        <div role="tabpanel" id="skipped-panel" aria-labelledby="skipped-tab" hidden>
+          <p class="detail-summary muted">Files excluded from this scan, including older dates, unselected files, unsupported modes, and duplicate recordings.</p>
+          <div class="table-scroll skipped-scroll" tabindex="0" aria-label="Skipped replay files"><table><thead><tr><th>Replay file</th><th>Reason</th></tr></thead><tbody id="skipped-body"></tbody></table></div>
+          <p class="empty-state" id="skipped-empty" hidden>No replay files were skipped.</p>
+        </div>
+      </section>
+    </section>
+    <footer class="page-footer">Replay files are processed locally. Counts help estimate Shop Token progress; Fortnite awards the actual quest credit. <a href="https://github.com/Loukious/FortniteChestTracker">Source code</a> · <a href="./licenses.html">Licenses</a></footer>
+  </main>
+</body>
+</html>
