@@ -58,6 +58,9 @@ Windows game DLL or local server component.
 The **Rewards** tab shows successful treasure results with their recorded player,
 reward category, tier, match date, replay time, and source file. It includes the
 replay owner, teammates, other recorded players, and unidentified recipients.
+Nearby players outside the squad, including opponents, appear as **Other player**
+when the replay captures their reward. This label describes squad membership;
+the app does not infer the recipient's distance from the owner.
 The replay-owner filter selects which recordings are included; it does not limit
 the reward recipients to the owner. Each included replay contributes its own
 reward records.

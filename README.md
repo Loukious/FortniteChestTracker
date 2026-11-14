@@ -14,7 +14,8 @@ miss additional openings, especially those by distant teammates.
 
 The **Rewards** tab lists recorded Major/Supreme treasure results with the reward
 category, tier, recipient, match date, replay time, and replay file. Rewards from
-the replay owner, teammates, and other recorded players are included. The owner
+the replay owner, teammates, and other recorded players, including nearby
+opponents, are included. Players outside the squad appear as **Other player**. The owner
 filter selects recordings, so their other-player rewards stay visible. Unknown
 recipients and prize IDs are retained. Match, squad, and player tables show
 recorded-reward counts, and CSV downloads include reward rows with blank chest

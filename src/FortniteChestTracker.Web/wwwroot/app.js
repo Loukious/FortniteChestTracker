@@ -564,7 +564,7 @@ function renderRewards(matches) {
   ui['rewards-coverage'].replaceChildren(coverageNotes);
   ui['rewards-coverage'].hidden = coverageNoteCount === 0;
   ui['rewards-count'].textContent = `(${number.format(count)})`;
-  ui['rewards-summary'].textContent = `${number.format(count)} reward records in ${number.format(matches.length)} included matches. Includes recorded rewards for the replay owner, teammates, and other players.`;
+  ui['rewards-summary'].textContent = `${number.format(count)} reward records in ${number.format(matches.length)} included matches. Includes recorded rewards for the replay owner, teammates, and other players, including nearby opponents. Players outside your squad appear as Other player.`;
   ui['rewards-empty'].hidden = count !== 0;
 }
 

@@ -75,7 +75,7 @@
         <article class="summary-card"><h3>Included matches</h3><p class="summary-value" id="match-total">—</p><p class="muted" id="files-summary"></p></article>
       </div>
       <p class="coverage-note">Counts are actual chest openings recorded in replays. <strong>+</strong> means more openings may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
-      <p class="coverage-note">Reward counts include recorded observations in each replay. <strong>None recorded</strong> does not mean no reward was received. Other players' rewards appear in Rewards. Gizmo reward detection is currently unavailable.</p>
+      <p class="coverage-note">Reward counts include recorded observations in each replay. Nearby players outside your squad appear as <strong>Other player</strong> in Rewards when their reward is recorded. <strong>None recorded</strong> does not mean no reward was received. Gizmo reward detection is currently unavailable.</p>
       <section class="panel matches-panel" aria-labelledby="matches-heading">
         <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted">Select a match for its squad breakdown.</p></div>
         <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">
@@ -100,7 +100,7 @@
           <div class="table-scroll" tabindex="0" aria-label="Chest and recorded reward totals by player"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Matches</th><th class="number">Chests opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="players-body"></tbody></table></div>
         </div>
         <div role="tabpanel" id="rewards-panel" aria-labelledby="rewards-tab" hidden>
-          <p class="detail-summary muted" id="rewards-summary">Recorded rewards for all players in the included matches.</p>
+          <p class="detail-summary muted" id="rewards-summary">Recorded rewards for the replay owner, teammates, and other players, including nearby opponents.</p>
           <p class="detail-summary muted">Major/Supreme rewards are shown when the replay records a successful treasure result and its recipient. Distant reward animations may be missing. <strong>None recorded</strong> does not mean no reward was received. Gizmo reward detection is currently unavailable.</p>
           <div id="rewards-coverage" role="note" aria-label="Additional reward coverage details" hidden></div>
           <div class="table-scroll rewards-scroll" tabindex="0" aria-label="Recorded treasure rewards"><table><thead><tr><th>Player</th><th>Role</th><th>Reward category</th><th>Tier</th><th>Match date</th><th>Replay time</th><th>Replay file</th></tr></thead><tbody id="rewards-body"></tbody></table></div>
