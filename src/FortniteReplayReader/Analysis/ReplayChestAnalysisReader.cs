@@ -19,6 +19,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private readonly ReplayContainer container;
     private readonly CancellationToken cancellationToken;
     private readonly ReplayChestAccumulator chestData = new();
+    private readonly ReplayTreasureRewardAccumulator rewardData = new();
     private readonly Dictionary<uint, uint> pawnStates = [];
     private readonly Dictionary<uint, string> playerStates = [];
     private readonly List<string> diagnostics = [];
@@ -37,6 +38,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private static readonly HashSet<string> PlaylistFields = new(StringComparer.Ordinal);
     private int searchFieldsDecoded;
     private int decodeErrors;
+    private int rewardDecodeErrors;
     private float? currentTime;
     private bool scanned;
 
@@ -55,6 +57,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         using var input = new MemoryStream();
         var replay = ReadReplay(input);
         var openings = chestData.Finish(pawnStates, playerStates);
+        var rewards = rewardData.Finish(pawnStates, playerStates);
         diagnostics.Add("Counts come from completed chest openings recorded in local replays. Distant teammate openings may be missing.");
         if (openings.Count(opening => opening.PlayerId == null) is int unattributed && unattributed > 0)
             diagnostics.Add($"{unattributed} visible opened chests have no recorded player identity and are excluded from player totals.");
@@ -62,7 +65,10 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
             diagnostics.Add("No supported chest-search fields were recorded; chest coverage is unavailable.");
         if (decodeErrors > 0)
             diagnostics.Add($"{decodeErrors} chest field updates could not be decoded; totals may be incomplete.");
-        return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0);
+        if (rewardDecodeErrors > 0)
+            diagnostics.Add($"{rewardDecodeErrors} treasure reward updates could not be decoded; reward results may be incomplete.");
+        return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0)
+            { Rewards = rewards, HasRewardDecodeErrors = rewardDecodeErrors > 0 };
     }
 
     public override void ReadReplayInfo(FArchive archive)
@@ -113,6 +119,11 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         [NotNullWhen(true)] out INetFieldExportGroup? exportGroup, bool enablePropertyChecksum = true, bool netDeltaUpdate = false)
     {
         exportGroup = null;
+        if (ReplayTreasureRewardDecoder.IsRewardGroup(group) && Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint rewardActor)
+        {
+            if (!rewardData.ReadUpdate(rewardActor, group, archive, enablePropertyChecksum, currentTime)) rewardDecodeErrors++;
+            return false;
+        }
         if (IsChestGroup(group) && Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint actor)
         {
             if (TryReadChestUpdate(archive, group, enablePropertyChecksum, out var searched, out var pawn,

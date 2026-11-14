@@ -1,5 +1,5 @@
-// Bump this when replay parsing, eligibility, ownership, or chest-counting behavior changes.
-export const PARSER_CACHE_VERSION = 'chest-parser-2026-11-12-v1';
+// Bump this when replay parsing, eligibility, ownership, chest counts, or reward detection changes.
+export const PARSER_CACHE_VERSION = 'chest-parser-2026-11-14-rewards-v1';
 
 const DATABASE_NAME = 'fortnite-chest-tracker-replay-cache';
 const STORE_NAME = 'results';

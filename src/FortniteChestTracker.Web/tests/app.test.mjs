@@ -25,6 +25,7 @@ class Element {
   setAttribute(name, value) { this.attributes.set(name, String(value)); }
   getAttribute(name) { return this.attributes.get(name); }
   removeAttribute(name) { this.attributes.delete(name); }
+  focus() { this.focused = true; }
   addEventListener(name, listener) { this.listeners.set(name, listener); }
   click() {
     if (this.disabled) return;
@@ -44,7 +45,7 @@ function loadApp(windowOptions = {}) {
     if (!elements.has(id)) elements.set(id, new Element());
     return elements.get(id);
   };
-  const tabs = ['squad', 'players', 'skipped'].map(name => {
+  const tabs = ['squad', 'players', 'rewards', 'skipped'].map(name => {
     const tab = getElement(`${name}-tab`);
     tab.id = `${name}-tab`;
     tab.setAttribute('aria-controls', `${name}-panel`);
@@ -226,4 +227,155 @@ test('CSV preserves quoted player names and neutralizes spreadsheet formulas', (
     app.set('playerName', name);
     assert.ok(app.run('csvEscape(playerName)').startsWith('"\''));
   }
+});
+
+function reward(playerId, options = {}) {
+  return { playerName: playerId, playerId, isOwner: false, isTeammate: true,
+    category: 'Loading screen', tier: 'Major', prizeTemplateId: 'example:loading',
+    replayTimeSeconds: 45, rewardActorGuid: 10, prizeIndex: 0, ...options };
+}
+
+function match(options = {}) {
+  return { matchId: 'match-a', matchDate: '2026-11-10T12:00:00', mode: 'BR', playlist: 'Playlist_DefaultSquad',
+    filePath: 'Demos/example.replay', ownerId: 'owner-a', ownerName: 'Owner A',
+    coverage: 'Chests opened; replay may miss distant openings',
+    rewardCoverage: 'Recorded rewards only; distant animations may be missing.',
+    players: [{ name: 'Owner A', playerId: 'owner-a', isOwner: true, chests: 7, coverage: 'Complete chest data' },
+      { name: 'Teammate', playerId: 'teammate', isOwner: false, chests: 3, coverage: 'Complete chest data' }],
+    rewards: [], ...options };
+}
+
+test('rewards keep separate players with the same prize and show the recorded recipient and time', () => {
+  const app = loadApp();
+  app.set('matches', [match({ rewards: [
+    reward('teammate', { rewardActorGuid: 10, replayTimeSeconds: 85.99 }),
+    reward('another-player', { isTeammate: false, rewardActorGuid: 11, replayTimeSeconds: 45 })
+  ] })]);
+  app.run('renderRewards(matches);');
+  const rows = app.elements.get('rewards-body').children;
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map(row => row.children[0].textContent), ['another-player', 'teammate']);
+  assert.deepEqual(rows.map(row => row.children[1].textContent), ['Other player', 'Teammate']);
+  assert.deepEqual(rows.map(row => row.children[2].textContent), ['Loading screen', 'Loading screen']);
+  assert.deepEqual(rows.map(row => row.children[5].textContent), ['00:45', '01:25']);
+  assert.equal(app.elements.get('rewards-count').textContent, '(2)');
+  assert.equal(app.elements.get('rewards-empty').hidden, true);
+});
+
+test('the replay-owner filter includes other recipients from that owners matches', () => {
+  const app = loadApp();
+  app.set('report', { matches: [
+    match({ rewards: [reward('other-player', { isTeammate: false })] }),
+    match({ matchId: 'match-b', ownerId: 'owner-b', ownerName: 'Owner B', rewards: [reward('owner-b', { isOwner: true })] })
+  ], skipped: [], filesScanned: 2 });
+  app.run("state.report = report; ui['owner-filter'].value = 'owner-a'; renderFilteredReport();");
+  assert.equal(app.elements.get('rewards-body').children.length, 1);
+  assert.equal(app.elements.get('rewards-body').children[0].children[0].textContent, 'other-player');
+  assert.equal(app.elements.get('rewards-count').textContent, '(1)');
+  app.run("ui['owner-filter'].value = ''; renderFilteredReport();");
+  assert.equal(app.elements.get('rewards-body').children.length, 2);
+  assert.equal(app.elements.get('rewards-count').textContent, '(2)');
+});
+
+test('unidentified recipients and unknown prize categories remain visible without identity guesses', () => {
+  const app = loadApp();
+  app.set('matches', [match({ rewards: [reward(null, { playerName: 'Unidentified player', isTeammate: false,
+    category: 'Treasure (unrecognized reward)', tier: 'Unknown', replayTimeSeconds: null })] })]);
+  app.run('renderRewards(matches);');
+  const cells = app.elements.get('rewards-body').children[0].children;
+  assert.equal(cells[0].textContent, 'Unidentified player');
+  assert.equal(cells[1].textContent, 'Unidentified');
+  assert.equal(cells[2].textContent, 'Treasure (unrecognized reward)');
+  assert.equal(cells[3].textContent, 'Unknown');
+  assert.equal(cells[5].textContent, 'Time unavailable');
+  assert.equal(app.run('playerRewardCount(matches, null)'), 0);
+});
+
+test('empty reward evidence is displayed as none recorded and older report shapes still render', () => {
+  const app = loadApp();
+  app.set('report', { matches: [match({ rewards: undefined })], skipped: [], filesScanned: 1 });
+  app.run('state.report = report; renderFilteredReport();');
+  assert.equal(app.elements.get('rewards-body').children.length, 0);
+  assert.equal(app.elements.get('rewards-empty').hidden, false);
+  assert.equal(app.elements.get('matches-body').children[0].children[6].textContent, 'None recorded');
+  assert.equal(app.elements.get('squad-body').children[0].children[3].textContent, 'None recorded');
+  assert.equal(app.elements.get('players-body').children[0].children[4].textContent, 'None recorded');
+  const html = readFileSync(new URL('../wwwroot/index.html', import.meta.url), 'utf8');
+  assert.match(html, /None recorded<\/strong> does not mean no reward was received/);
+  assert.match(html, /Gizmo reward detection is currently unavailable/);
+});
+
+test('recorded reward counts leave squad chest totals unchanged and exclude other recipients from squad counts', () => {
+  const app = loadApp();
+  app.set('report', { matches: [match({ rewards: [
+    reward('OWNER-A', { isOwner: true }), reward('teammate'), reward('another-player', { isTeammate: false })
+  ] })], skipped: [], filesScanned: 1 });
+  app.run('state.report = report; renderFilteredReport();');
+  assert.equal(app.run('matchCounts(state.visibleMatches[0]).squad'), 10);
+  assert.equal(app.elements.get('squad-body').children[0].children[3].textContent, '1');
+  assert.equal(app.elements.get('squad-body').children[1].children[3].textContent, '1');
+  assert.equal(app.elements.get('rewards-body').children.length, 3);
+});
+
+test('reward coverage exceptions stay visible even when a match has no reward records and follow the owner filter', () => {
+  const app = loadApp();
+  const baseCoverage = 'Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.';
+  app.set('report', { matches: [
+    match({ rewards: [], rewardCoverage: baseCoverage + ' Some reward updates could not be read.' }),
+    match({ matchId: 'match-b', ownerId: 'owner-b', ownerName: 'Owner B', rewardCoverage: baseCoverage,
+      rewards: [reward('owner-b', { isOwner: true })] })
+  ], skipped: [], filesScanned: 2 });
+  app.run("state.report = report; ui['owner-filter'].value = 'owner-a'; renderFilteredReport();");
+  const notes = app.elements.get('rewards-coverage');
+  assert.equal(notes.hidden, false);
+  assert.equal(notes.children.length, 1);
+  assert.match(notes.children[0].textContent, /Some reward updates could not be read/);
+  assert.match(app.elements.get('selected-match-reward-summary').textContent, /Some reward updates could not be read/);
+  assert.match(app.elements.get('matches-body').children[0].children[6].title, /Some reward updates could not be read/);
+  app.run("ui['owner-filter'].value = 'owner-b'; renderFilteredReport();");
+  assert.equal(notes.hidden, true);
+  assert.equal(notes.children.length, 0);
+  assert.equal(app.elements.get('selected-match-reward-summary').textContent, baseCoverage);
+  app.run("ui['owner-filter'].value = 'missing-owner'; renderFilteredReport();");
+  assert.equal(app.elements.get('selected-match-reward-summary').textContent, '');
+});
+
+test('reward CSV rows preserve the chest schema and cannot double-count chest openings', () => {
+  const app = loadApp();
+  app.set('matches', [match({ rewards: [reward('teammate', { playerName: '=HYPERLINK("example")' }),
+    reward('other', { playerName: 'Other, "player"', isTeammate: false, category: 'Gold outfit', tier: 'Supreme' })] })]);
+  const rows = app.run('csvRows(matches)');
+  assert.equal(rows.length, 5);
+  assert.equal(rows[0].length, 19);
+  assert.deepEqual(Array.from(rows[0].slice(14)), ['Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID']);
+  assert.equal(rows[1][9], 7);
+  assert.equal(rows[1][12], 10);
+  assert.equal(rows[1][14], 'Chest');
+  assert.equal(rows[3][14], 'Reward');
+  assert.deepEqual(Array.from(rows[3].slice(9, 13)), ['', '', '', '']);
+  assert.equal(rows[3][15], 'Loading screen');
+  assert.equal(rows[3][17], '00:45');
+  assert.equal(rows[4][8], 'Other player');
+  const csv = app.run("csvRows(matches).map(line => line.map(csvEscape).join(',')).join('\\r\\n')");
+  assert.ok(csv.includes('"\'=HYPERLINK(""example"")"'));
+  assert.ok(csv.includes('"Other, ""player"""'));
+});
+
+test('Rewards participates in accessible tab activation and keyboard navigation', () => {
+  const app = loadApp();
+  app.elements.get('rewards-tab').click();
+  assert.equal(app.elements.get('rewards-tab').getAttribute('aria-selected'), 'true');
+  assert.equal(app.elements.get('rewards-tab').tabIndex, 0);
+  assert.equal(app.elements.get('rewards-panel').hidden, false);
+  assert.equal(app.elements.get('squad-panel').hidden, true);
+  assert.equal(app.elements.get('players-tab').tabIndex, -1);
+  let prevented = false;
+  app.elements.get('players-tab').listeners.get('keydown')({ key: 'ArrowRight', preventDefault() { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(app.elements.get('rewards-tab').focused, true);
+  app.elements.get('rewards-tab').listeners.get('keydown')({ key: 'End', preventDefault() {} });
+  assert.equal(app.elements.get('skipped-panel').hidden, false);
+  const html = readFileSync(new URL('../wwwroot/index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="rewards-tab" aria-controls="rewards-panel" aria-selected="false" tabindex="-1"/);
+  assert.match(html, /role="tabpanel" id="rewards-panel" aria-labelledby="rewards-tab" hidden/);
 });

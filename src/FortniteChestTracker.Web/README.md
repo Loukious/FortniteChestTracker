@@ -2,7 +2,8 @@
 
 The chest tracker runs the replay parser in browser workers using .NET WebAssembly.
 It produces a report for the replay owner and teammates in standard public Battle
-Royale and Zero Build matches, with owner filtering and CSV download. Release
+Royale and Zero Build matches, with recorded treasure rewards, owner filtering,
+and CSV download. Release
 builds compile the parser ahead of time to improve replay parsing speed.
 
 ## Choose your replays
@@ -38,7 +39,7 @@ device memory. Each replay stays in one worker. Cancel stops all workers
 and preserves the previous completed report.
 
 Completed per-file results are cached locally in IndexedDB. The cache contains
-report metadata such as player names, IDs, chest counts, and skip reasons, without
+report metadata such as player names, IDs, chest counts, recorded rewards, and skip reasons, without
 storing replay bytes. Eligible files are read and hashed with SHA256 before cache
 lookup, even on repeat scans, so changed contents cannot reuse an old result. Cache
 keys also include the parser version, selected start date, and browser time zone.
@@ -51,6 +52,33 @@ may be missing from the recording, especially those by distant teammates.
 older recordings, duplicate matches, and unreadable files appear under **Skipped
 files**. The browser app uses the managed replay decompressor and requires no
 Windows game DLL or local server component.
+
+## Recorded treasure rewards
+
+The **Rewards** tab shows successful treasure results with their recorded player,
+reward category, tier, match date, replay time, and source file. It includes the
+replay owner, teammates, other recorded players, and unidentified recipients.
+The replay-owner filter selects which recordings are included; it does not limit
+the reward recipients to the owner. Each included replay contributes its own
+reward records.
+
+Major/Supreme prize categories can be detected when the recording contains the
+treasure animation actor and its explicit successful result. This includes gold
+outfits, Pirate Shop Access, gold car decals, pickaxes/back bling, Jam Tracks, and
+loading screens. Unknown prize IDs remain visible as unrecognized treasures.
+Categories describe the event reward; they do not identify the exact weekly
+cosmetic or independently confirm a final locker transaction.
+
+Coverage is incomplete: distant reward animations may be absent, and **None
+recorded** does not mean the player received no reward. Gizmo reward detection is
+currently unavailable; possession or use is not counted as an award. Reward
+decode issues appear in the coverage note without changing chest counts.
+
+Match, squad, and player tables include recorded-reward counts. CSV exports retain
+the original chest columns and append a row type and reward fields. **Reward**
+rows leave all chest-count columns empty, so summing chest columns remains safe.
+**Chest** rows preserve the existing opening counts. Updated parsing uses a new
+cache version, so a repeat scan refreshes earlier chest-only results.
 
 ## Measured scan example
 
@@ -90,11 +118,11 @@ When a change alters parsing, eligibility, ownership, or chest counts, bump
 
 ## Deploy to GitHub Pages
 
-In the destination repository's **Settings â†’ Pages**, set **Source** to **GitHub
+In the destination repository's **Settings → Pages**, set **Source** to **GitHub
 Actions**. The prepared
 [Chest Tracker Pages workflow](../../.github/workflows/chest-tracker-pages.yml)
-publishes after relevant changes reach `main`, or when started through **Actions â†’
-Deploy Chest Tracker to GitHub Pages â†’ Run workflow**.
+publishes after relevant changes reach `main`, or when started through **Actions →
+Deploy Chest Tracker to GitHub Pages → Run workflow**.
 
 The workflow installs .NET 10 and `wasm-tools`, publishes the Release browser
 project, and uploads **only** `artifacts/FortniteChestTracker.Web/wwwroot`. Keep its

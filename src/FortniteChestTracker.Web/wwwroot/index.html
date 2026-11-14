@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <meta name="description" content="Count chests opened by you and your teammates in Fortnite replays. Replay files are processed locally in your browser.">
+  <meta name="description" content="Count chest openings and see recorded treasure rewards in Fortnite replays. Replay files are processed locally in your browser.">
   <title>Fortnite Chest Tracker</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%236988ff'/%3E%3Cpath d='M9 17h22v14H9zm2-7h18l2 5H9z' fill='%23fff'/%3E%3Cpath d='M18 17h4v7h-4z' fill='%236988ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./app.css">
@@ -15,7 +15,7 @@
     <header class="page-header">
       <p class="eyebrow">FORTNITE SHOP TOKEN</p>
       <h1>Chest Tracker</h1>
-      <p class="intro">Chests opened by the replay owner and their teammates in regular Battle Royale and Zero Build.</p>
+      <p class="intro">Chests opened by the replay owner and their teammates, plus recorded treasure rewards, in regular Battle Royale and Zero Build.</p>
     </header>
 
     <section class="panel selection-panel" aria-labelledby="selection-heading">
@@ -65,7 +65,7 @@
 
     <section id="report" hidden aria-labelledby="report-heading">
       <div class="report-heading">
-        <div><h2 id="report-heading">Chest report</h2><p class="muted" id="report-summary"></p></div>
+        <div><h2 id="report-heading">Chests &amp; rewards</h2><p class="muted" id="report-summary"></p></div>
         <div class="report-actions"><label class="owner-field">Replay owner<select id="owner-filter" aria-label="Filter by replay owner"></select></label><button type="button" id="export">Download CSV</button></div>
       </div>
       <div class="summary-cards">
@@ -75,10 +75,11 @@
         <article class="summary-card"><h3>Included matches</h3><p class="summary-value" id="match-total">—</p><p class="muted" id="files-summary"></p></article>
       </div>
       <p class="coverage-note">Counts are actual chest openings recorded in replays. <strong>+</strong> means more openings may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
+      <p class="coverage-note">Reward counts include recorded observations in each replay. <strong>None recorded</strong> does not mean no reward was received. Other players' rewards appear in Rewards. Gizmo reward detection is currently unavailable.</p>
       <section class="panel matches-panel" aria-labelledby="matches-heading">
         <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted">Select a match for its squad breakdown.</p></div>
         <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">
-          <table class="matches-table"><thead><tr><th>Match date</th><th>Mode</th><th>Replay owner</th><th class="number">Owner opened</th><th class="number">Teammates opened</th><th class="number">Squad opened</th><th>Coverage</th><th>Replay file</th></tr></thead><tbody id="matches-body"></tbody></table>
+          <table class="matches-table"><thead><tr><th>Match date</th><th>Mode</th><th>Replay owner</th><th class="number">Owner opened</th><th class="number">Teammates opened</th><th class="number">Squad opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Replay file</th></tr></thead><tbody id="matches-body"></tbody></table>
         </div>
         <p class="empty-state" id="matches-empty" hidden>No eligible matches found. Check Skipped files for the reasons.</p>
       </section>
@@ -86,15 +87,24 @@
         <div class="tabs" role="tablist" aria-label="Chest report details">
           <button type="button" role="tab" id="squad-tab" aria-controls="squad-panel" aria-selected="true">Squad details</button>
           <button type="button" role="tab" id="players-tab" aria-controls="players-panel" aria-selected="false" tabindex="-1">Player totals</button>
+          <button type="button" role="tab" id="rewards-tab" aria-controls="rewards-panel" aria-selected="false" tabindex="-1">Rewards <span id="rewards-count"></span></button>
           <button type="button" role="tab" id="skipped-tab" aria-controls="skipped-panel" aria-selected="false" tabindex="-1">Skipped files <span id="skipped-count"></span></button>
         </div>
         <div role="tabpanel" id="squad-panel" aria-labelledby="squad-tab">
           <p class="detail-summary muted" id="selected-match-summary">Select a match to see its replay owner and teammates.</p>
-          <div class="table-scroll" tabindex="0" aria-label="Selected match squad"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Chests opened</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="squad-body"></tbody></table></div>
+          <p class="detail-summary muted" id="selected-match-reward-summary"></p>
+          <div class="table-scroll" tabindex="0" aria-label="Selected match squad"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Chests opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="squad-body"></tbody></table></div>
         </div>
         <div role="tabpanel" id="players-panel" aria-labelledby="players-tab" hidden>
-          <p class="detail-summary muted">Totals for every player in the currently included matches.</p>
-          <div class="table-scroll" tabindex="0" aria-label="Chest totals by player"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Matches</th><th class="number">Chests opened</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="players-body"></tbody></table></div>
+          <p class="detail-summary muted">Totals for the replay owners and teammates in the included matches. Other players' recorded rewards appear in Rewards.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Chest and recorded reward totals by player"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Matches</th><th class="number">Chests opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="players-body"></tbody></table></div>
+        </div>
+        <div role="tabpanel" id="rewards-panel" aria-labelledby="rewards-tab" hidden>
+          <p class="detail-summary muted" id="rewards-summary">Recorded rewards for all players in the included matches.</p>
+          <p class="detail-summary muted">Major/Supreme rewards are shown when the replay records a successful treasure result and its recipient. Distant reward animations may be missing. <strong>None recorded</strong> does not mean no reward was received. Gizmo reward detection is currently unavailable.</p>
+          <div id="rewards-coverage" role="note" aria-label="Additional reward coverage details" hidden></div>
+          <div class="table-scroll rewards-scroll" tabindex="0" aria-label="Recorded treasure rewards"><table><thead><tr><th>Player</th><th>Role</th><th>Reward category</th><th>Tier</th><th>Match date</th><th>Replay time</th><th>Replay file</th></tr></thead><tbody id="rewards-body"></tbody></table></div>
+          <p class="empty-state" id="rewards-empty" hidden>None recorded in these matches. Additional rewards may be missing from the replays.</p>
         </div>
         <div role="tabpanel" id="skipped-panel" aria-labelledby="skipped-tab" hidden>
           <p class="detail-summary muted">Files excluded from this scan, including older dates, unselected files, unsupported modes, and duplicate recordings.</p>

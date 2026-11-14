@@ -8,7 +8,11 @@ public sealed record ReplayChestOpening(uint ChestActorGuid, string ChestClass, 
 
 /// <summary>Counts are an observed minimum; local replays do not record every distant teammate interaction.</summary>
 public sealed record ReplayChestAnalysis(FortniteReplay Replay, IReadOnlyList<ReplayChestOpening> Openings,
-    IReadOnlyList<string> Diagnostics, int ChestActorsSeen, int SearchFieldsDecoded, bool HasDecodeErrors);
+    IReadOnlyList<string> Diagnostics, int ChestActorsSeen, int SearchFieldsDecoded, bool HasDecodeErrors)
+{
+    public IReadOnlyList<ReplayTreasureReward> Rewards { get; init; } = [];
+    public bool HasRewardDecodeErrors { get; init; }
+}
 
 internal sealed class ReplayChestAccumulator
 {

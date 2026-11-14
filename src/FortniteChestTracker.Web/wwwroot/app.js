@@ -6,7 +6,8 @@ const ui = Object.fromEntries([
   'files-panel', 'selection-summary', 'select-all', 'files-body', 'scan-selection-label', 'scan',
   'status', 'cancel', 'progress', 'report', 'report-summary', 'owner-filter', 'export',
   'owner-total', 'teammate-total', 'squad-total', 'match-total', 'owners-summary', 'files-summary',
-  'matches-body', 'matches-empty', 'selected-match-summary', 'squad-body', 'players-body',
+  'matches-body', 'matches-empty', 'selected-match-summary', 'selected-match-reward-summary', 'squad-body', 'players-body',
+  'rewards-body', 'rewards-count', 'rewards-summary', 'rewards-coverage', 'rewards-empty',
   'skipped-body', 'skipped-count', 'skipped-empty'
 ].map((id) => [id, byId(id)]));
 
@@ -24,6 +25,25 @@ const fileKey = (file) => `${filePath(file)}\u0000${file.size}\u0000${file.lastM
 const completeCoverage = (coverage) => String(coverage ?? '') === 'Complete chest data';
 const unknownTeam = (match) => String(match.coverage ?? '').includes('team membership unavailable');
 const knownCount = (value) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+const matchRewards = (match) => (Array.isArray(match.rewards) ? match.rewards : []).filter((reward) => reward && typeof reward === 'object');
+const defaultRewardCoverage = 'Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.';
+const rewardCoverage = (match) => match.rewardCoverage || defaultRewardCoverage;
+const rewardRole = (reward) => reward.isOwner ? 'Replay owner' : reward.isTeammate ? 'Teammate' : reward.playerId ? 'Other player' : 'Unidentified';
+const recordedRewardCount = (count) => count > 0 ? number.format(count) : 'None recorded';
+
+function playerRewardCount(matches, playerId) {
+  if (typeof playerId !== 'string' || !playerId.trim()) return 0;
+  return matches.reduce((total, match) => total + matchRewards(match).filter((reward) =>
+    reward.playerId && caseKey(reward.playerId) === caseKey(playerId)).length, 0);
+}
+
+function formatReplayTime(value) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return 'Time unavailable';
+  const seconds = Math.floor(value);
+  const minutes = Math.floor(seconds / 60);
+  const tail = `${String(minutes % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+  return minutes >= 60 ? `${Math.floor(minutes / 60)}:${tail}` : tail;
+}
 
 function dateThreshold() {
   const value = ui.since.value;
@@ -454,29 +474,36 @@ function renderFilteredReport() {
     button.textContent = formatDate(match.matchDate);
     button.setAttribute('aria-label', `Show squad for ${match.ownerName}, ${formatDate(match.matchDate)}`);
     dateCell.append(button);
+    const rewardsCell = cell(recordedRewardCount(matchRewards(match).length), 'number');
+    rewardsCell.title = rewardCoverage(match);
     row.append(dateCell, cell(String(match.mode ?? '').replace('Battle Royale', 'BR')), cell(match.ownerName),
       cell(formatCount(counts.owner, match.coverage), 'number'), cell(formatCount(counts.teammates, match.coverage), 'number'), cell(formatCount(counts.squad, match.coverage), 'number'),
-      cell(match.coverage), cell(String(match.filePath ?? '').split(/[\\/]/).pop()));
+      rewardsCell, cell(match.coverage), cell(String(match.filePath ?? '').split(/[\\/]/).pop()));
     rows.append(row);
   });
   ui['matches-body'].replaceChildren(rows);
   ui['matches-empty'].hidden = matches.length !== 0;
   renderSquad();
   renderPlayerTotals(matches);
+  renderRewards(matches);
 }
 
 function renderSquad() {
   const match = state.selectedMatch;
   if (!match) {
     ui['selected-match-summary'].textContent = 'No eligible match is selected.';
+    ui['selected-match-reward-summary'].textContent = '';
     ui['squad-body'].replaceChildren();
     return;
   }
   ui['selected-match-summary'].textContent = `${formatDate(match.matchDate)} · ${match.playlist} · ${match.coverage}`;
+  ui['selected-match-reward-summary'].textContent = rewardCoverage(match);
   const rows = document.createDocumentFragment();
   for (const player of [...(match.players ?? [])].sort((a, b) => Number(b.isOwner) - Number(a.isOwner))) {
     const row = document.createElement('tr');
-    row.append(cell(player.name), cell(player.isOwner ? 'Replay owner' : 'Teammate'), cell(formatCount(player.chests, player.coverage), 'number'), cell(player.coverage), cell(player.playerId));
+    const rewards = cell(recordedRewardCount(playerRewardCount([match], player.playerId)), 'number');
+    rewards.title = rewardCoverage(match);
+    row.append(cell(player.name), cell(player.isOwner ? 'Replay owner' : 'Teammate'), cell(formatCount(player.chests, player.coverage), 'number'), rewards, cell(player.coverage), cell(player.playerId));
     rows.append(row);
   }
   ui['squad-body'].replaceChildren(rows);
@@ -498,10 +525,47 @@ function renderPlayerTotals(matches) {
     const count = hasData === 0 ? 'Unknown' : number.format(players.reduce((sum, player) => sum + (knownCount(player.chests) ?? 0), 0)) + (partial ? '+' : '');
     const coverage = partial ? `${number.format(hasData)} of ${number.format(players.length)} matches have chest opening counts; some openings may be missing` : 'Complete chest data';
     const row = document.createElement('tr');
-    row.append(cell(players[0].name), cell(owners === players.length ? 'Replay owner' : owners ? 'Owner / teammate' : 'Teammate'), cell(number.format(players.length), 'number'), cell(count, 'number'), cell(coverage), cell(players[0].playerId));
+    row.append(cell(players[0].name), cell(owners === players.length ? 'Replay owner' : owners ? 'Owner / teammate' : 'Teammate'), cell(number.format(players.length), 'number'), cell(count, 'number'),
+      cell(recordedRewardCount(playerRewardCount(matches, players[0].playerId)), 'number'), cell(coverage), cell(players[0].playerId));
     rows.append(row);
   }
   ui['players-body'].replaceChildren(rows);
+}
+
+function renderRewards(matches) {
+  const rows = document.createDocumentFragment();
+  const coverageNotes = document.createDocumentFragment();
+  let coverageNoteCount = 0;
+  let count = 0;
+  for (const match of matches) {
+    const coverage = String(rewardCoverage(match));
+    const extraCoverage = coverage.startsWith(defaultRewardCoverage)
+      ? coverage.slice(defaultRewardCoverage.length).trim() : coverage.trim();
+    if (extraCoverage) {
+      const note = document.createElement('p');
+      note.className = 'detail-summary muted';
+      note.textContent = `${String(match.filePath ?? '').split(/[\\/]/).pop() || formatDate(match.matchDate)}: ${extraCoverage}`;
+      coverageNotes.append(note);
+      coverageNoteCount++;
+    }
+    const rewards = [...matchRewards(match)].sort((a, b) => (a.replayTimeSeconds ?? Infinity) - (b.replayTimeSeconds ?? Infinity));
+    for (const reward of rewards) {
+      const row = document.createElement('tr');
+      row.title = rewardCoverage(match);
+      row.append(cell(reward.playerName || 'Unidentified player'), cell(rewardRole(reward)),
+        cell(reward.category || 'Treasure (unrecognized reward)'), cell(reward.tier || 'Unknown'),
+        cell(formatDate(match.matchDate)), cell(formatReplayTime(reward.replayTimeSeconds)),
+        cell(String(match.filePath ?? '').split(/[\\/]/).pop()));
+      rows.append(row);
+      count++;
+    }
+  }
+  ui['rewards-body'].replaceChildren(rows);
+  ui['rewards-coverage'].replaceChildren(coverageNotes);
+  ui['rewards-coverage'].hidden = coverageNoteCount === 0;
+  ui['rewards-count'].textContent = `(${number.format(count)})`;
+  ui['rewards-summary'].textContent = `${number.format(count)} reward records in ${number.format(matches.length)} included matches. Includes recorded rewards for the replay owner, teammates, and other players.`;
+  ui['rewards-empty'].hidden = count !== 0;
 }
 
 function selectTab(id) {
@@ -518,21 +582,31 @@ function csvEscape(value) {
   if (/^[\t\r\n]|^\s*[=+\-@]/.test(text)) text = `'${text}`;
   return `"${text.replaceAll('"', '""')}"`;
 }
-function exportCsv() {
-  if (!state.report || state.busy) return;
-  const lines = [['Match date', 'Mode', 'Playlist', 'Match ID', 'Replay file', 'Replay owner', 'Player', 'Player ID', 'Role', 'Chests opened', 'Owner chests opened', 'Teammate chests opened', 'Squad chests opened', 'Coverage']];
-  for (const match of state.visibleMatches) {
+function csvRows(matches) {
+  const lines = [['Match date', 'Mode', 'Playlist', 'Match ID', 'Replay file', 'Replay owner', 'Player', 'Player ID', 'Role', 'Chests opened', 'Owner chests opened', 'Teammate chests opened', 'Squad chests opened', 'Coverage',
+    'Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID']];
+  for (const match of matches) {
     const counts = matchCounts(match);
     for (const player of match.players ?? []) lines.push([
       match.matchDate, match.mode, match.playlist, match.matchId, String(match.filePath ?? '').split(/[\\/]/).pop(), match.ownerName,
       player.name, player.playerId, player.isOwner ? 'Replay owner' : 'Teammate', knownCount(player.chests) ?? 'Unknown',
-      counts.owner ?? 'Unknown', counts.teammates ?? 'Unknown', counts.squad ?? 'Unknown', `${player.coverage}; ${match.coverage}`
+      counts.owner ?? 'Unknown', counts.teammates ?? 'Unknown', counts.squad ?? 'Unknown', `${player.coverage}; ${match.coverage}`, 'Chest', '', '', '', ''
+    ]);
+    for (const reward of matchRewards(match)) lines.push([
+      match.matchDate, match.mode, match.playlist, match.matchId, String(match.filePath ?? '').split(/[\\/]/).pop(), match.ownerName,
+      reward.playerName || 'Unidentified player', reward.playerId, rewardRole(reward), '', '', '', '', rewardCoverage(match),
+      'Reward', reward.category || 'Treasure (unrecognized reward)', reward.tier || 'Unknown', formatReplayTime(reward.replayTimeSeconds), reward.prizeTemplateId
     ]);
   }
+  return lines;
+}
+function exportCsv() {
+  if (!state.report || state.busy) return;
+  const lines = csvRows(state.visibleMatches);
   const url = URL.createObjectURL(new Blob(['\uFEFF' + lines.map((line) => line.map(csvEscape).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = `Fortnite-chests-since-${state.reportSince}.csv`;
+  link.download = `Fortnite-chests-and-rewards-since-${state.reportSince}.csv`;
   document.body.append(link);
   link.click();
   link.remove();

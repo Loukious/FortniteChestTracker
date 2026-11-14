@@ -21,6 +21,7 @@
     <Compile Include="..\FortniteChestTracker.Core\ChestEligibility.cs" Link="Core\ChestEligibility.cs" />
     <Compile Include="..\FortniteChestTracker.Core\ChestReportBuilder.cs" Link="Core\ChestReportBuilder.cs" />
     <Compile Include="..\FortniteChestTracker.Core\ChestMatchFactory.cs" Link="Core\ChestMatchFactory.cs" />
+    <Compile Include="..\FortniteChestTracker.Core\ChestRewardCatalog.cs" Link="Core\ChestRewardCatalog.cs" />
     <Compile Include="..\FortniteChestTracker.Core\ReplayMetadataReader.cs" Link="Core\ReplayMetadataReader.cs" />
   </ItemGroup>
 </Project>

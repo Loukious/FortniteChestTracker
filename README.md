@@ -2,8 +2,8 @@
 
 [Open the chest tracker](https://loukious.github.io/FortniteChestTracker/)
 
-Count chests opened by the replay owner and their squad in regular Fortnite Battle
-Royale and Zero Build matches. Choose your replay folder, select a start date, and
+Count chests opened by the replay owner and their squad, and view recorded treasure
+rewards in regular Fortnite Battle Royale and Zero Build matches. Choose your replay folder, select a start date, and
 scan the files you need. Replays are processed locally in your browser and are
 never uploaded.
 
@@ -11,6 +11,20 @@ The app skips older files before reading their contents, uses up to four workers
 and caches completed results locally for fast repeat scans. Counts come from
 completed chest searches attributed to players. A **+** means the recording may
 miss additional openings, especially those by distant teammates.
+
+The **Rewards** tab lists recorded Major/Supreme treasure results with the reward
+category, tier, recipient, match date, replay time, and replay file. Rewards from
+the replay owner, teammates, and other recorded players are included. The owner
+filter selects recordings, so their other-player rewards stay visible. Unknown
+recipients and prize IDs are retained. Match, squad, and player tables show
+recorded-reward counts, and CSV downloads include reward rows with blank chest
+count columns.
+
+The recording may miss distant reward animations. **None recorded** does not
+mean no reward was received. Gizmo reward detection is currently unavailable.
+These records describe successful prize rolls and do not independently confirm
+the final locker transaction. Re-scan your files after the update to refresh the
+locally cached results.
 
 Fortnite's usual Windows replay folder is
 `%LOCALAPPDATA%\FortniteGame\Saved\Demos`. The page provides a copy button for

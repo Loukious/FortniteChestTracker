@@ -6,12 +6,19 @@ public sealed record SkippedReplay(string FileName, string Reason);
 
 public sealed record ChestPlayer(string Name, string PlayerId, bool IsOwner, int? Chests, string Coverage);
 
+public sealed record ChestReward(
+    string PlayerName, string? PlayerId, bool IsOwner, bool IsTeammate,
+    string Category, string Tier, string PrizeTemplateId, float? ReplayTimeSeconds,
+    uint RewardActorGuid, int PrizeIndex);
+
 public sealed record ChestMatch(
     string FilePath, string MatchId, string OwnerName, string OwnerId, string Mode,
     string Playlist, DateTime MatchDate, IReadOnlyList<ChestPlayer> Players, string Coverage)
 {
     public string FileName => Path.GetFileName(FilePath);
     public uint RecordingLengthInMs { get; init; }
+    public IReadOnlyList<ChestReward> Rewards { get; init; } = [];
+    public string RewardCoverage { get; init; } = ChestRewardCoverage.RecordedOnly;
     public int? OwnerChests => Players.Single(p => p.IsOwner).Chests;
     public int? TeammateChests => Coverage.Contains("team membership unavailable", StringComparison.Ordinal)
         ? null : SumKnown(Players.Where(p => !p.IsOwner));
@@ -33,6 +40,12 @@ public sealed record ChestScanReport(
     public int TeammateChests => Matches.Sum(m => m.Players.Where(p => !p.IsOwner).Sum(p => p.Chests ?? 0));
     public int SquadChests => OwnerChests + TeammateChests;
     public int IncompleteMatches => Matches.Count(m => m.SquadChests is null || m.Coverage != ChestCoverage.Complete);
+    public int RecordedRewards => Matches.Sum(m => m.Rewards.Count);
+}
+
+public static class ChestRewardCoverage
+{
+    public const string RecordedOnly = "Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.";
 }
 
 public static class ChestCoverage
