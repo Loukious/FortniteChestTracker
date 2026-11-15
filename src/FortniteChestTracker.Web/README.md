@@ -46,8 +46,11 @@ keys also include the parser version, selected start date, and browser time zone
 Live recordings and read failures are not cached. Scanning still works if browser
 storage is unavailable.
 
-Counts represent chests players actually opened. **+** means additional openings
-may be missing from the recording, especially those by distant teammates.
+**Opened** is one count combining normal openings and destroyed unopened chests
+attributed to players in the replay. Each chest contributes at most once per replay.
+Counts are the minimum confirmed by the recording; destruction without supported
+player attribution may be missing. **+** means additional chests may be missing,
+especially those by distant teammates.
 **Unknown** means unavailable data and is excluded from totals. Unsupported modes,
 older recordings, duplicate matches, and unreadable files appear under **Skipped
 files**. The browser app uses the managed replay decompressor and requires no
@@ -80,8 +83,9 @@ decode issues appear in the coverage note without changing chest counts.
 Match, squad, and player tables include recorded-reward counts. CSV exports retain
 the original chest columns and append a row type and reward fields. **Reward**
 rows leave all chest-count columns empty, so summing chest columns remains safe.
-**Chest** rows preserve the existing opening counts. Updated parsing uses a new
-cache version, so a repeat scan refreshes earlier chest-only results.
+**Chest** rows carry the same combined **Opened** count in the existing chest
+columns. Updated parsing uses a new cache version, so a repeat scan refreshes
+earlier results that counted only normal openings.
 
 ## Measured scan example
 

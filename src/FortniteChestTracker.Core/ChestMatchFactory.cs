@@ -19,8 +19,8 @@ internal static class ChestMatchFactory
             .Select(group => group.First()).ToArray();
         var available = analysis.SearchFieldsDecoded > 0;
         var coverage = !available ? ChestCoverage.Unavailable : analysis.HasDecodeErrors
-            ? "Some replay data unreadable; counted recorded chest openings"
-            : "Chests opened; replay may miss distant openings";
+            ? "Some replay data unreadable; counted recorded openings and attributed unopened chest destructions"
+            : "Opened includes attributed unopened chest destructions; replay may miss distant interactions";
         var players = squad.Select(item => new ChestPlayer(
             item.player.PlayerName ?? item.player.PlayerNameCustomOverride ?? item.player.StreamerModeName ?? item.player.PlayerId ?? "Unnamed player",
             string.IsNullOrWhiteSpace(item.player.PlayerId) ? $"unknown:{matchId}:{owner.PlayerId}:{item.index}" : item.player.PlayerId,

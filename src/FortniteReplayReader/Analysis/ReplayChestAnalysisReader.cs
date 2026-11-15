@@ -58,13 +58,15 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         var replay = ReadReplay(input);
         var openings = chestData.Finish(pawnStates, playerStates);
         var rewards = rewardData.Finish(pawnStates, playerStates);
-        diagnostics.Add("Counts come from completed chest openings recorded in local replays. Distant teammate openings may be missing.");
+        diagnostics.Add("Opened counts include recorded chest searches and attributed destruction of unopened chests, counted once per chest. Distant teammate interactions may be missing.");
         if (openings.Count(opening => opening.PlayerId == null) is int unattributed && unattributed > 0)
             diagnostics.Add($"{unattributed} visible opened chests have no recorded player identity and are excluded from player totals.");
         if (searchFieldsDecoded == 0)
             diagnostics.Add("No supported chest-search fields were recorded; chest coverage is unavailable.");
         if (decodeErrors > 0)
             diagnostics.Add($"{decodeErrors} chest field updates could not be decoded; totals may be incomplete.");
+        if (chestData.UnsupportedDestroyedActors > 0)
+            diagnostics.Add($"{chestData.UnsupportedDestroyedActors} destroyed {(chestData.UnsupportedDestroyedActors == 1 ? "chest lacks" : "chests lack")} a recorded completed interaction with a fresh player reference and cannot be included in opened totals.");
         if (rewardDecodeErrors > 0)
             diagnostics.Add($"{rewardDecodeErrors} treasure reward updates could not be decoded; reward results may be incomplete.");
         return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0)
@@ -126,14 +128,13 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         }
         if (IsChestGroup(group) && Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint actor)
         {
-            if (TryReadChestUpdate(archive, group, enablePropertyChecksum, out var searched, out var pawn,
-                out var hasPawnUpdate, out var fields))
+            if (TryReadChestUpdate(archive, group, enablePropertyChecksum, out var update))
             {
-                searchFieldsDecoded += fields;
-                chestData.Update(actor, group.PathName, searched, pawn, hasPawnUpdate, currentTime);
+                searchFieldsDecoded += update.SearchFieldsDecoded;
+                chestData.Update(actor, group.PathName, update, currentTime);
             }
             else decodeErrors++;
-            // The completed search has already been decoded; no gameplay chest model is needed.
+            // The opening/destruction update has been decoded; no gameplay chest model is needed.
             return false;
         }
         var reportFields = GetReportFields(group.PathName);
@@ -170,36 +171,52 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     internal static bool TryReadChestUpdate(FBitArchive archive, NetFieldExportGroup group, bool checksum,
         out bool? searched, out uint? pawn, out bool hasPawnUpdate, out int decodedFields)
     {
-        searched = null;
-        pawn = null;
-        hasPawnUpdate = false;
-        decodedFields = 0;
+        var valid = TryReadChestUpdate(archive, group, checksum, out var update);
+        searched = update.Searched;
+        pawn = update.SearchingPawn;
+        hasPawnUpdate = update.HasPawnUpdate;
+        decodedFields = update.SearchFieldsDecoded;
+        return valid;
+    }
+
+    internal static bool TryReadChestUpdate(FBitArchive archive, NetFieldExportGroup group, bool checksum,
+        out ReplayChestUpdate update)
+    {
+        update = new(null, null, false, null, null, 0);
+        bool? searched = null, destroyed = null;
+        uint? pawn = null, animationCount = null;
+        var hasPawnUpdate = false;
+        var decodedFields = 0;
         if (checksum) archive.ReadBit();
         while (!archive.AtEnd() && !archive.IsError)
         {
             var handle = archive.ReadIntPacked();
             if (archive.IsError) return false;
-            if (handle == 0) return true;
+            if (handle == 0)
+            {
+                update = new(searched, pawn, hasPawnUpdate, destroyed, animationCount, decodedFields);
+                return true;
+            }
             handle--;
             if (!group.IsValidIndex(handle)) return false;
             var count = archive.ReadIntPacked();
             if (archive.IsError || count > archive.GetBitsLeft() || count > int.MaxValue) return false;
             var name = group.NetFieldExports[handle]?.Name;
             if (count == 0) continue;
-            if (name is not ("bAlreadySearched" or "SearchingPawn"))
+            if (name is not ("bAlreadySearched" or "SearchingPawn" or "bDestroyed" or "SearchAnimationCount"))
             {
                 archive.SkipBits((int)count);
                 continue;
             }
             using var bits = new NetBitReader(archive.ReadBits((int)count), (int)count);
-            if (name == "bAlreadySearched") searched = bits.ReadBit();
-            else
+            switch (name)
             {
-                pawn = bits.ReadIntPacked();
-                hasPawnUpdate = true;
+                case "bAlreadySearched": searched = bits.ReadBit(); decodedFields++; break;
+                case "SearchingPawn": pawn = bits.ReadIntPacked(); hasPawnUpdate = true; decodedFields++; break;
+                case "bDestroyed": destroyed = bits.ReadBit(); break;
+                case "SearchAnimationCount": animationCount = bits.ReadUInt32(); break;
             }
             if (bits.IsError || !bits.AtEnd()) return false;
-            decodedFields++;
         }
         return false;
     }

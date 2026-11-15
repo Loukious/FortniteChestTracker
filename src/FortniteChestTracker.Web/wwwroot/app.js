@@ -523,7 +523,7 @@ function renderPlayerTotals(matches) {
     const hasData = players.filter((player) => knownCount(player.chests) !== null).length;
     const partial = players.some((player) => knownCount(player.chests) === null || !completeCoverage(player.coverage));
     const count = hasData === 0 ? 'Unknown' : number.format(players.reduce((sum, player) => sum + (knownCount(player.chests) ?? 0), 0)) + (partial ? '+' : '');
-    const coverage = partial ? `${number.format(hasData)} of ${number.format(players.length)} matches have chest opening counts; some openings may be missing` : 'Complete chest data';
+    const coverage = partial ? `${number.format(hasData)} of ${number.format(players.length)} matches have Opened counts; recorded minimum, some chests may be missing` : 'Complete chest data';
     const row = document.createElement('tr');
     row.append(cell(players[0].name), cell(owners === players.length ? 'Replay owner' : owners ? 'Owner / teammate' : 'Teammate'), cell(number.format(players.length), 'number'), cell(count, 'number'),
       cell(recordedRewardCount(playerRewardCount(matches, players[0].playerId)), 'number'), cell(coverage), cell(players[0].playerId));

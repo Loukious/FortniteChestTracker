@@ -2,15 +2,18 @@
 
 [Open the chest tracker](https://loukious.github.io/FortniteChestTracker/)
 
-Count chests opened by the replay owner and their squad, and view recorded treasure
+Track the **Opened** count for the replay owner and their squad, and view recorded treasure
 rewards in regular Fortnite Battle Royale and Zero Build matches. Choose your replay folder, select a start date, and
 scan the files you need. Replays are processed locally in your browser and are
 never uploaded.
 
 The app skips older files before reading their contents, uses up to four workers,
 and caches completed results locally for fast repeat scans. Counts come from
-completed chest searches attributed to players. A **+** means the recording may
-miss additional openings, especially those by distant teammates.
+completed chest searches and destroyed unopened chests with recorded player
+attribution. They share one **Opened** counter, and each chest counts once per
+replay. A **+** means the recording may miss additional interactions, especially
+those by distant teammates. Destruction without supported player attribution
+is excluded. Counts are a confirmed minimum.
 
 The **Rewards** tab lists recorded Major/Supreme treasure results with the reward
 category, tier, recipient, match date, replay time, and replay file. Rewards from
