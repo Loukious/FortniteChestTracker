@@ -47,7 +47,9 @@ Live recordings and read failures are not cached. Scanning still works if browse
 storage is unavailable.
 
 **Opened** is one count combining normal openings and destroyed unopened chests
-attributed to players in the replay. Each chest contributes at most once per replay.
+attributed to players in the replay. An explicit recorded reset allows a chest to
+contribute again when it is reopened or destroyed. Repeated updates within a reset
+cycle count once, including placed chests that reappear with another actor GUID.
 Counts are the minimum confirmed by the recording; destruction without supported
 player attribution may be missing. **+** means additional chests may be missing,
 especially those by distant teammates.
@@ -58,7 +60,7 @@ Windows game DLL or local server component.
 
 ## Recorded treasure rewards
 
-The **Rewards** tab shows successful treasure results with their recorded player,
+The **Rewards** tab shows successful treasure results and recorded treasure receipts with their player,
 reward category, tier, match date, replay time, and source file. It includes the
 replay owner, teammates, other recorded players, and unidentified recipients.
 Nearby players outside the squad, including opponents, appear as **Other player**
@@ -75,17 +77,28 @@ loading screens. Unknown prize IDs remain visible as unrecognized treasures.
 Categories describe the event reward; they do not identify the exact weekly
 cosmetic or independently confirm a final locker transaction.
 
-Coverage is incomplete: distant reward animations may be absent, and **None
-recorded** does not mean the player received no reward. Gizmo reward detection is
-currently unavailable; possession or use is not counted as an award. Reward
+An explicitly replicated treasure-handler ability grant adds a **Treasure (unknown
+type)** receipt when no unique successful result for the same recipient is nearby.
+The **Record** column distinguishes receipts from successful prize results. A
+receipt identifies who received a treasure, and can come from a shared teammate
+reward; it does not identify the chest's opener. A generic handler does not reveal
+the prize category, so unknown receipts may include Gizmos or unrecorded Major/Supreme
+rewards. Possession, use, and the first appearance of an ability class are not counted
+as awards. Repeated ability updates do not add another receipt.
+
+A unique receipt and successful result for the same recipient within five replay
+seconds are shown once, with the identified prize taking priority. Ambiguous nearby
+records remain separate. Counts describe recorded observations, rather than a
+complete locker transaction history. Coverage is incomplete: distant rewards may be
+absent, and **None recorded** does not mean the player received no reward. Reward
 decode issues appear in the coverage note without changing chest counts.
 
 Match, squad, and player tables include recorded-reward counts. CSV exports retain
-the original chest columns and append a row type and reward fields. **Reward**
+the original chest columns and append a row type, reward fields, and reward evidence. **Reward**
 rows leave all chest-count columns empty, so summing chest columns remains safe.
 **Chest** rows carry the same combined **Opened** count in the existing chest
 columns. Updated parsing uses a new cache version, so a repeat scan refreshes
-earlier results that counted only normal openings.
+earlier results that missed reset cycles or duplicated reappearing placed chests.
 
 ## Measured scan example
 

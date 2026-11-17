@@ -26,9 +26,10 @@ const completeCoverage = (coverage) => String(coverage ?? '') === 'Complete ches
 const unknownTeam = (match) => String(match.coverage ?? '').includes('team membership unavailable');
 const knownCount = (value) => typeof value === 'number' && Number.isFinite(value) ? value : null;
 const matchRewards = (match) => (Array.isArray(match.rewards) ? match.rewards : []).filter((reward) => reward && typeof reward === 'object');
-const defaultRewardCoverage = 'Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.';
+const defaultRewardCoverage = 'Recorded reward results and treasure receipts only; replay may miss distant rewards. Unknown-type receipts may be shared; Gizmo category cannot be confirmed.';
 const rewardCoverage = (match) => match.rewardCoverage || defaultRewardCoverage;
 const rewardRole = (reward) => reward.isOwner ? 'Replay owner' : reward.isTeammate ? 'Teammate' : reward.playerId ? 'Other player' : 'Unidentified';
+const rewardEvidence = (reward) => reward.evidence || 'Successful prize result';
 const recordedRewardCount = (count) => count > 0 ? number.format(count) : 'None recorded';
 
 function playerRewardCount(matches, playerId) {
@@ -555,7 +556,7 @@ function renderRewards(matches) {
       row.append(cell(reward.playerName || 'Unidentified player'), cell(rewardRole(reward)),
         cell(reward.category || 'Treasure (unrecognized reward)'), cell(reward.tier || 'Unknown'),
         cell(formatDate(match.matchDate)), cell(formatReplayTime(reward.replayTimeSeconds)),
-        cell(String(match.filePath ?? '').split(/[\\/]/).pop()));
+        cell(String(match.filePath ?? '').split(/[\\/]/).pop()), cell(rewardEvidence(reward)));
       rows.append(row);
       count++;
     }
@@ -584,18 +585,18 @@ function csvEscape(value) {
 }
 function csvRows(matches) {
   const lines = [['Match date', 'Mode', 'Playlist', 'Match ID', 'Replay file', 'Replay owner', 'Player', 'Player ID', 'Role', 'Chests opened', 'Owner chests opened', 'Teammate chests opened', 'Squad chests opened', 'Coverage',
-    'Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID']];
+    'Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID', 'Reward evidence']];
   for (const match of matches) {
     const counts = matchCounts(match);
     for (const player of match.players ?? []) lines.push([
       match.matchDate, match.mode, match.playlist, match.matchId, String(match.filePath ?? '').split(/[\\/]/).pop(), match.ownerName,
       player.name, player.playerId, player.isOwner ? 'Replay owner' : 'Teammate', knownCount(player.chests) ?? 'Unknown',
-      counts.owner ?? 'Unknown', counts.teammates ?? 'Unknown', counts.squad ?? 'Unknown', `${player.coverage}; ${match.coverage}`, 'Chest', '', '', '', ''
+      counts.owner ?? 'Unknown', counts.teammates ?? 'Unknown', counts.squad ?? 'Unknown', `${player.coverage}; ${match.coverage}`, 'Chest', '', '', '', '', ''
     ]);
     for (const reward of matchRewards(match)) lines.push([
       match.matchDate, match.mode, match.playlist, match.matchId, String(match.filePath ?? '').split(/[\\/]/).pop(), match.ownerName,
       reward.playerName || 'Unidentified player', reward.playerId, rewardRole(reward), '', '', '', '', rewardCoverage(match),
-      'Reward', reward.category || 'Treasure (unrecognized reward)', reward.tier || 'Unknown', formatReplayTime(reward.replayTimeSeconds), reward.prizeTemplateId
+      'Reward', reward.category || 'Treasure (unrecognized reward)', reward.tier || 'Unknown', formatReplayTime(reward.replayTimeSeconds), reward.prizeTemplateId, rewardEvidence(reward)
     ]);
   }
   return lines;

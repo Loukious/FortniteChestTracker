@@ -1904,6 +1904,8 @@ public abstract class ReplayReader<T> where T : Replay, new()
         var bIsActor = bunch.Archive.ReadBit();
         if (bIsActor)
         {
+            if (Channels[bunch.ChIndex]?.ActorId is uint actorGuid)
+                OnContentBlockObjectRead(bunch.ChIndex, actorGuid);
             // If this is for the actor on the channel, we don't need to read anything else
             return Channels[bunch.ChIndex]?.ArchetypeId ?? Channels[bunch.ChIndex]?.ActorId;
         }
@@ -1911,6 +1913,7 @@ public abstract class ReplayReader<T> where T : Replay, new()
         // We need to handle a sub-object
         // Manually serialize the object so that we can get the NetGUID (in order to assign it if we spawn the object here)
         var netGuid = InternalLoadObject(bunch.Archive, false);
+        if (!bunch.Archive.IsError) OnContentBlockObjectRead(bunch.ChIndex, netGuid.Value);
 
         var bStablyNamed = bunch.Archive.ReadBit();
         if (bStablyNamed)
@@ -1965,6 +1968,9 @@ public abstract class ReplayReader<T> where T : Replay, new()
 
         return classNetGUID?.Value;
     }
+
+    /// <summary>Identifies the actor or subobject whose following content block is being read.</summary>
+    protected virtual void OnContentBlockObjectRead(uint channelIndex, uint objectGuid) { }
 
     /// <summary>
     /// see https://github.com/EpicGames/UnrealEngine/blob/70bc980c6361d9a7d23f6d23ffe322a2d6ef16fb/Engine/Source/Runtime/Engine/Private/NetConnection.cpp#L1007

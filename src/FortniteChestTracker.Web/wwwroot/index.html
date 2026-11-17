@@ -74,8 +74,8 @@
         <article class="summary-card"><h3>Squad · Opened</h3><p class="summary-value accent" id="squad-total">—</p><p class="muted">Owner + teammates</p></article>
         <article class="summary-card"><h3>Included matches</h3><p class="summary-value" id="match-total">—</p><p class="muted" id="files-summary"></p></article>
       </div>
-      <p class="coverage-note"><strong>Opened</strong> includes normal openings and destroyed unopened chests attributed to players in the replay. Each chest counts once per replay. Counts are the minimum confirmed by the recording. <strong>+</strong> means more chests may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
-      <p class="coverage-note">Reward counts include recorded observations in each replay. Nearby players outside your squad appear as <strong>Other player</strong> in Rewards when their reward is recorded. <strong>None recorded</strong> does not mean no reward was received. Gizmo reward detection is currently unavailable.</p>
+      <p class="coverage-note"><strong>Opened</strong> includes normal openings and destroyed unopened chests attributed to players in the replay. A chest that resets and is opened or destroyed again counts again; repeated updates within the same opening count once. Counts are the minimum confirmed by the recording. <strong>+</strong> means more chests may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
+      <p class="coverage-note">Reward counts include recorded observations in each replay. Nearby players outside your squad appear as <strong>Other player</strong> in Rewards when their reward is recorded. <strong>None recorded</strong> does not mean no reward was received. Treasure receipts without a prize ID appear as <strong>Treasure (unknown type)</strong>; they may include Gizmos or shared teammate rewards.</p>
       <section class="panel matches-panel" aria-labelledby="matches-heading">
         <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted">Select a match for its squad breakdown.</p></div>
         <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">
@@ -101,9 +101,9 @@
         </div>
         <div role="tabpanel" id="rewards-panel" aria-labelledby="rewards-tab" hidden>
           <p class="detail-summary muted" id="rewards-summary">Recorded rewards for the replay owner, teammates, and other players, including nearby opponents.</p>
-          <p class="detail-summary muted">Major/Supreme rewards are shown when the replay records a successful treasure result and its recipient. Distant reward animations may be missing. <strong>None recorded</strong> does not mean no reward was received. Gizmo reward detection is currently unavailable.</p>
+          <p class="detail-summary muted">Major/Supreme rewards are shown from successful prize results. <strong>Treasure (unknown type)</strong> means a treasure receipt was recorded without a prize ID; it may be shared from a teammate's chest. The Record column distinguishes these receipts from prize results. Gizmo category cannot be confirmed without a prize ID. Distant rewards may be missing. <strong>None recorded</strong> does not mean no reward was received.</p>
           <div id="rewards-coverage" role="note" aria-label="Additional reward coverage details" hidden></div>
-          <div class="table-scroll rewards-scroll" tabindex="0" aria-label="Recorded treasure rewards"><table><thead><tr><th>Player</th><th>Role</th><th>Reward category</th><th>Tier</th><th>Match date</th><th>Replay time</th><th>Replay file</th></tr></thead><tbody id="rewards-body"></tbody></table></div>
+          <div class="table-scroll rewards-scroll" tabindex="0" aria-label="Recorded treasure rewards"><table><thead><tr><th>Player</th><th>Role</th><th>Reward category</th><th>Tier</th><th>Match date</th><th>Replay time</th><th>Replay file</th><th>Record</th></tr></thead><tbody id="rewards-body"></tbody></table></div>
           <p class="empty-state" id="rewards-empty" hidden>None recorded in these matches. Additional rewards may be missing from the replays.</p>
         </div>
         <div role="tabpanel" id="skipped-panel" aria-labelledby="skipped-tab" hidden>

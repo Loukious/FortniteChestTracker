@@ -20,8 +20,12 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private readonly CancellationToken cancellationToken;
     private readonly ReplayChestAccumulator chestData = new();
     private readonly ReplayTreasureRewardAccumulator rewardData = new();
+    private readonly ReplayTreasureGrantAccumulator grantData = new();
     private readonly Dictionary<uint, uint> pawnStates = [];
     private readonly Dictionary<uint, string> playerStates = [];
+    private readonly HashSet<uint> knownPlayerStates = [];
+    private readonly Dictionary<uint, uint> componentOwners = [];
+    private readonly Dictionary<uint, string> handlerPaths = [];
     private readonly List<string> diagnostics = [];
     private readonly HashSet<NetFieldExportGroup> filteredGroups = [];
     private static readonly HashSet<string> GameFields = new(StringComparer.Ordinal)
@@ -39,6 +43,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private int searchFieldsDecoded;
     private int decodeErrors;
     private int rewardDecodeErrors;
+    private int grantDecodeErrors;
+    private uint currentContentObject;
     private float? currentTime;
     private bool scanned;
 
@@ -58,7 +64,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         var replay = ReadReplay(input);
         var openings = chestData.Finish(pawnStates, playerStates);
         var rewards = rewardData.Finish(pawnStates, playerStates);
-        diagnostics.Add("Opened counts include recorded chest searches and attributed destruction of unopened chests, counted once per chest. Distant teammate interactions may be missing.");
+        var grants = grantData.Finish(pawnStates, knownPlayerStates, playerStates, handlerPaths);
+        diagnostics.Add("Opened counts include recorded chest searches and attributed destruction of unopened chests, counted once per recorded reset cycle. Distant teammate interactions may be missing.");
         if (openings.Count(opening => opening.PlayerId == null) is int unattributed && unattributed > 0)
             diagnostics.Add($"{unattributed} visible opened chests have no recorded player identity and are excluded from player totals.");
         if (searchFieldsDecoded == 0)
@@ -69,8 +76,15 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
             diagnostics.Add($"{chestData.UnsupportedDestroyedActors} destroyed {(chestData.UnsupportedDestroyedActors == 1 ? "chest lacks" : "chests lack")} a recorded completed interaction with a fresh player reference and cannot be included in opened totals.");
         if (rewardDecodeErrors > 0)
             diagnostics.Add($"{rewardDecodeErrors} treasure reward updates could not be decoded; reward results may be incomplete.");
+        if (grantDecodeErrors > 0)
+            diagnostics.Add($"{grantDecodeErrors} ability system updates could not be decoded; treasure receipt results may be incomplete.");
+        if (grantData.UnattributedGrants > 0)
+            diagnostics.Add($"{grantData.UnattributedGrants} treasure handler receipts have no recorded player state and are excluded from player totals.");
+        if (grants.Count > 0)
+            diagnostics.Add("Treasure handler receipts identify recipients and may be shared with squad members. They do not identify the source chest, opener, or prize type.");
         return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0)
-            { Rewards = rewards, HasRewardDecodeErrors = rewardDecodeErrors > 0 };
+            { Rewards = rewards, HasRewardDecodeErrors = rewardDecodeErrors > 0,
+                Grants = grants, HasGrantDecodeErrors = grantDecodeErrors > 0 };
     }
 
     public override void ReadReplayInfo(FArchive archive)
@@ -117,6 +131,104 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         return result;
     }
 
+    protected override void OnContentBlockObjectRead(uint channelIndex, uint objectGuid) => currentContentObject = objectGuid;
+
+    public override NetworkGUID InternalLoadObject(FArchive archive, bool isExportingNetGUIDBunch, int internalLoadObjectRecursionCount = 0)
+    {
+        var start = archive.Position;
+        var guid = base.InternalLoadObject(archive, isExportingNetGUIDBunch, internalLoadObjectRecursionCount);
+        if (!archive.IsError && isExportingNetGUIDBunch && archive.Position > start &&
+            _netGuidCache.NetGuidToPathName.TryGetValue(guid.Value, out var path) && path.Contains("GA_TreasureHandler_", StringComparison.Ordinal))
+        {
+            // The general GUID cache intentionally strips Default__. Preserve the
+            // original exported object name to distinguish a CDO from a class.
+            var end = archive.Position;
+            archive.Seek(start, SeekOrigin.Begin);
+            using FArchive copy = archive is FBitArchive bits
+                ? new NetBitReader(bits.ReadBits(end - start), end - start)
+                : new Archive(archive.ReadMemory(end - start));
+            archive.Seek(end, SeekOrigin.Begin);
+            CaptureHandlerDefinition(copy, 0);
+        }
+        return guid;
+    }
+
+    private void CaptureHandlerDefinition(FArchive archive, int depth)
+    {
+        if (depth > 16) return;
+        var guid = archive.ReadIntPacked();
+        if (guid == 0 || archive.IsError) return;
+        var flags = archive.ReadByte();
+        if ((flags & (byte)ExportFlags.bHasPath) == 0) return;
+        CaptureHandlerDefinition(archive, depth + 1);
+        var path = archive.ReadFString();
+        if ((flags & (byte)ExportFlags.bHasNetworkChecksum) != 0) archive.ReadUInt32();
+        if (!archive.IsError && ReplayTreasureGrantDecoder.TryGetHandlerClass(path, out _)) handlerPaths[guid] = path;
+    }
+
+    public override bool ReceivedReplicatorBunch(DataBunch bunch, FBitArchive archive, uint? repObject, bool bHasRepLayout)
+    {
+        var group = _netGuidCache.GetNetFieldExportGroup(repObject);
+        var channelActor = Channels[bunch.ChIndex]?.ActorId ?? 0;
+        if (group?.PathName == "/Script/FortniteGame.FortPlayerStateAthena" &&
+            Channels[bunch.ChIndex]?.ActorId is uint playerState) knownPlayerStates.Add(playerState);
+        // A stably named default subobject header carries its instance GUID,
+        // without a class GUID. "AbilitySystemComponent" on FortPlayerStateAthena
+        // is the native Athena component; the identically named generic script
+        // class is not its layout. Require this exact owner and subobject name.
+        if (repObject == currentContentObject &&
+            _netGuidCache.NetGuidToPathName.TryGetValue(currentContentObject, out var objectName) && objectName == "AbilitySystemComponent")
+        {
+            // Other actors' unnamed component classes are not established by
+            // this instance name; do not apply a generic or guessed layout.
+            if (!knownPlayerStates.Contains(channelActor)) return true;
+            group = _netGuidCache.GetNetFieldExportGroup("/Script/FortniteGame.FortAbilitySystemComponentAthena") ?? group;
+        }
+        if (group == null || !ReplayTreasureGrantDecoder.IsAbilityGroup(group))
+            return base.ReceivedReplicatorBunch(bunch, archive, repObject, bHasRepLayout);
+
+        var component = currentContentObject;
+        uint? owner = null;
+        var updates = new List<ReplayAbilityArrayUpdate>();
+        if (component == 0 || channelActor == 0 ||
+            bHasRepLayout && !ReplayTreasureGrantDecoder.TryReadOwner(archive, group, out owner))
+            return GrantDecodeFailure();
+        if (!archive.AtEnd())
+        {
+            if (!_netGuidCache.TryGetClassNetCache(group.PathName, out var cache,
+                archive.EngineNetworkVersion >= EngineNetworkVersionHistory.HISTORY_CLASSNETCACHE_FULLNAME))
+                return GrantDecodeFailure();
+            while (!archive.AtEnd())
+            {
+                if (!ReadFieldHeaderAndPayload(archive, cache, out var field, out var count)) return GrantDecodeFailure();
+                if (count > int.MaxValue || count > archive.GetBitsLeft()) return GrantDecodeFailure();
+                if (field?.Name != "ActivatableAbilities")
+                {
+                    archive.SkipBits(count.Value);
+                    continue;
+                }
+                using var value = new NetBitReader(archive.ReadBits(count.Value), (int)count.Value)
+                    { EngineNetworkVersion = archive.EngineNetworkVersion };
+                if (!ReplayTreasureGrantDecoder.TryReadArray(value, group, out var update)) return GrantDecodeFailure();
+                updates.Add(update);
+            }
+        }
+        if (archive.IsError || !archive.AtEnd()) return GrantDecodeFailure();
+        // Commit only after the whole content block and every named array payload
+        // are framed successfully, so a malformed tail cannot create a receipt.
+        if (owner is > 0) componentOwners[component] = owner.Value;
+        var recipient = componentOwners.GetValueOrDefault(component, channelActor);
+        if (pawnStates.TryGetValue(recipient, out var recipientState)) recipient = recipientState;
+        foreach (var update in updates) grantData.Apply(component, recipient, update, currentTime);
+        return true;
+    }
+
+    private bool GrantDecodeFailure()
+    {
+        grantDecodeErrors++;
+        return false;
+    }
+
     public override bool ReceiveProperties(FBitArchive archive, NetFieldExportGroup group, uint channelIndex,
         [NotNullWhen(true)] out INetFieldExportGroup? exportGroup, bool enablePropertyChecksum = true, bool netDeltaUpdate = false)
     {
@@ -131,7 +243,10 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
             if (TryReadChestUpdate(archive, group, enablePropertyChecksum, out var update))
             {
                 searchFieldsDecoded += update.SearchFieldsDecoded;
-                chestData.Update(actor, group.PathName, update, currentTime);
+                var stablePath = _netGuidCache.TryGetPathName(actor, out var path) &&
+                    IsStableChestActorPath(actor, path, Channels[channelIndex]?.Actor?.Archetype?.IsValid() == true)
+                    ? path : null;
+                chestData.Update(actor, group.PathName, update, currentTime, stablePath);
             }
             else decodeErrors++;
             // The opening/destruction update has been decoded; no gameplay chest model is needed.
@@ -167,6 +282,32 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         group.PathName.Contains("Chest", StringComparison.OrdinalIgnoreCase) &&
         !group.PathName.Contains("Ammo", StringComparison.OrdinalIgnoreCase) &&
         group.NetFieldExports.Any(field => field?.Name == "bAlreadySearched");
+
+    internal static bool IsStableChestActorPath(uint actor, string path, bool hasArchetype)
+    {
+        // Static placed actors use odd GUIDs and no spawned archetype. Only a
+        // unique UAID/hash instance name establishes identity across GUID exports;
+        // a blueprint class, short numbered name, or spawn position does not.
+        if (actor <= 1 || (actor & 1) == 0 || hasArchetype) return false;
+        var uaid = path.IndexOf("_UAID_", StringComparison.Ordinal);
+        if (uaid > 0)
+        {
+            var identifier = path.AsSpan(uaid + 6);
+            var end = identifier.IndexOf('_');
+            if (end >= 0) identifier = identifier[..end];
+            return identifier.Length >= 12 && IsHex(identifier);
+        }
+        var separator = path.LastIndexOf('_');
+        return separator >= 17 && path.AsSpan(separator + 1).Length > 0 &&
+            path.AsSpan(separator + 1).IndexOfAnyExceptInRange('0', '9') < 0 &&
+            path[separator - 17] == '_' && IsHex(path.AsSpan(separator - 16, 16));
+    }
+
+    private static bool IsHex(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value) if (!char.IsAsciiHexDigit(character)) return false;
+        return true;
+    }
 
     internal static bool TryReadChestUpdate(FBitArchive archive, NetFieldExportGroup group, bool checksum,
         out bool? searched, out uint? pawn, out bool hasPawnUpdate, out int decodedFields)
@@ -229,6 +370,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
                 pawnStates[actor] = playerState;
             else if (exportGroup is FortPlayerState state)
             {
+                knownPlayerStates.Add(actor);
                 var id = state.bIsABot == true ? state.BotUniqueId : state.UniqueId ?? state.UniqueID ?? state.PlatformUniqueNetId;
                 if (!string.IsNullOrWhiteSpace(id)) playerStates[actor] = id;
             }

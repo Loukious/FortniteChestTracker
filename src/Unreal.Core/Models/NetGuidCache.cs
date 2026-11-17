@@ -75,6 +75,12 @@ public class NetGuidCache
         NetFieldExportGroupMap.Clear();
         NetFieldExportGroupIndexToGroup.Clear();
         _netFieldExportGroupFromIndex.Clear();
+        NetFieldExportGroupMapPathFixed.Clear();
+        _archTypeToExportGroup.Clear();
+        _cleanedPaths.Clear();
+        _cleanedClassNetCache.Clear();
+        _failedPaths.Clear();
+        _networkGameplayTagNodeIndex = null;
     }
 
     /// <summary>
@@ -85,6 +91,57 @@ public class NetGuidCache
         if (group.EndsWith("ClassNetCache"))
         {
             exportGroup.PathName = exportGroup.PathName.RemoveAllPathPrefixes();
+        }
+
+        if (!NetFieldExportGroupMap.TryGetValue(group, out var previous))
+        {
+            // An actor can arrive before its class's export table. Retry failed
+            // resolutions when another table becomes available.
+            _failedPaths.Clear();
+            // A legacy prefix match can also have selected a base class while
+            // the exact subclass table was missing. Evict only actors that the
+            // new exact class name can resolve, preserving unrelated mappings.
+            var className = group.RemoveAllPathPrefixes();
+            List<uint>? retryActors = null;
+            foreach (var cached in NetFieldExportGroupMapPathFixed)
+            {
+                var actor = cached.Key;
+                // A new package can introduce the same class leaf. Previously
+                // matched numbered instances must then be retried too, so the
+                // exact matcher can reject the now ambiguous layout.
+                if (cached.Value.PathName.RemoveAllPathPrefixes() == className)
+                {
+                    (retryActors ??= []).Add(actor);
+                    continue;
+                }
+                if (!NetGuidToPathName.TryGetValue(actor, out var actorPath)) continue;
+                var name = actorPath.RemoveAllPathPrefixes();
+                if (name == className || className.EndsWith("_C", StringComparison.Ordinal) &&
+                    TryGetInstanceBaseName(name, out var instanceName) &&
+                    (instanceName == className || instanceName + "_C" == className))
+                    (retryActors ??= []).Add(actor);
+            }
+            if (retryActors != null)
+                foreach (var actor in retryActors)
+                {
+                    NetFieldExportGroupMapPathFixed.Remove(actor);
+                    _archTypeToExportGroup.Remove(actor);
+                }
+        }
+        else if (!ReferenceEquals(previous, exportGroup))
+        {
+            // Checkpoint tables and replacement groups must not reuse an earlier
+            // actor mapping or a normalized name from the old table index.
+            NetFieldExportGroupMapPathFixed.Clear();
+            _archTypeToExportGroup.Clear();
+            _cleanedPaths.Clear();
+            _failedPaths.Clear();
+            _networkGameplayTagNodeIndex = null;
+            if (previous.PathNameIndex != exportGroup.PathNameIndex)
+            {
+                NetFieldExportGroupIndexToGroup.Remove(previous.PathNameIndex);
+                _netFieldExportGroupFromIndex.Remove(previous.PathNameIndex);
+            }
         }
 
         NetFieldExportGroupMap[group] = exportGroup;
@@ -152,7 +209,7 @@ public class NetGuidCache
                 return null;
             }
 
-            // Don't need to recheck. Some export groups are added later though
+            // Failed resolutions remain cached until the export tables change.
             if (_failedPaths.Contains(path))
             {
                 return null;
@@ -162,6 +219,48 @@ public class NetGuidCache
             {
                 _archTypeToExportGroup[netguid.Value] = NetFieldExportGroupMapPathFixed[netguid.Value];
                 return group;
+            }
+
+            // A script subclass such as FortAbilitySystemComponentAthena must
+            // select its own table before the legacy substring lookup can match
+            // the shorter FortAbilitySystemComponent name.
+            if (NetFieldExportGroupMap.TryGetValue(path, out group) ||
+                MatchExactGroupName(path.RemoveAllPathPrefixes(), out group))
+            {
+                if (group != null)
+                {
+                    NetFieldExportGroupMapPathFixed[netguid.Value] = group;
+                    _archTypeToExportGroup[netguid.Value] = group;
+                }
+                else _failedPaths.Add(path);
+                return group;
+            }
+
+            if (TryGetInstanceBaseName(path, out var instanceName))
+            {
+                // Placed instances can omit _C and include a UAID or hash. Match
+                // their full class name before trimming instance numbers; a
+                // substring match could otherwise select a different chest type.
+                var className = instanceName.EndsWith("_C", StringComparison.Ordinal)
+                    ? instanceName : instanceName + "_C";
+                var matched = MatchExactGroupName(className, out group);
+                if (!matched && className != instanceName)
+                    matched = MatchExactGroupName(instanceName, out group);
+                var numberedBase = instanceName.CleanPathSuffix();
+                if (!matched && numberedBase != instanceName)
+                    matched = MatchExactGroupName(numberedBase + "_C", out group) ||
+                        MatchExactGroupName(numberedBase, out group);
+                if (group != null)
+                {
+                    NetFieldExportGroupMapPathFixed[netguid.Value] = group;
+                    _archTypeToExportGroup[netguid.Value] = group;
+                    return group;
+                }
+
+                // Unknown or ambiguous instance classes stay unresolved. Do not
+                // fall through to the legacy substring matching below.
+                _failedPaths.Add(path);
+                return null;
             }
 
             foreach (var groupPathKvp in NetFieldExportGroupMap)
@@ -205,6 +304,55 @@ public class NetGuidCache
         }
 
         return group;
+    }
+
+    // A matched but ambiguous name returns true with no group, preventing a
+    // fallback to a shorter name and an unrelated class.
+    private bool MatchExactGroupName(string className, out NetFieldExportGroup? result)
+    {
+        result = null;
+        foreach (var pair in NetFieldExportGroupMap)
+        {
+            if (!_cleanedPaths.TryGetValue(pair.Value.PathNameIndex, out var name))
+            {
+                name = pair.Key.RemoveAllPathPrefixes();
+                _cleanedPaths[pair.Value.PathNameIndex] = name;
+            }
+            if (name != className) continue;
+            // A leaf name shared by several packages does not establish which
+            // layout the instance uses.
+            if (result != null) { result = null; return true; }
+            result = pair.Value;
+        }
+        return result != null;
+    }
+
+    private static bool TryGetInstanceBaseName(string path, out string name)
+    {
+        name = path.RemoveAllPathPrefixes();
+        var uaid = name.IndexOf("_UAID_", StringComparison.Ordinal);
+        if (uaid > 0)
+        {
+            name = name[..uaid];
+            return true;
+        }
+        if (name.Length == 0 || !char.IsAsciiDigit(name[^1])) return false;
+        var separator = name.LastIndexOf('_');
+        if (separator >= 17 && name.AsSpan(separator + 1).IndexOfAnyExceptInRange('0', '9') < 0 &&
+            name[separator - 17] == '_' && IsInstanceHash(name.AsSpan(separator - 16, 16)))
+        {
+            name = name[..(separator - 17)];
+        }
+        // Without a hash, keep the number for the first exact lookup: it may be
+        // part of a real class name rather than an instance suffix.
+        return true;
+    }
+
+    private static bool IsInstanceHash(ReadOnlySpan<char> value)
+    {
+        foreach (var character in value)
+            if (!char.IsAsciiHexDigit(character)) return false;
+        return true;
     }
 
     /// <summary>
@@ -279,16 +427,9 @@ public class NetGuidCache
     /// </summary>
     public void Cleanup()
     {
-        NetFieldExportGroupIndexToGroup.Clear();
-        NetFieldExportGroupMap.Clear();
+        ClearExportGroups();
         NetGuidToPathName.Clear();
         //ObjectLookup.Clear();
-        NetFieldExportGroupMapPathFixed.Clear();
         ExternalData.Clear();
-        _networkGameplayTagNodeIndex = null;
-        _archTypeToExportGroup.Clear();
-        _cleanedPaths.Clear();
-        _cleanedClassNetCache.Clear();
-        _failedPaths.Clear();
     }
 }

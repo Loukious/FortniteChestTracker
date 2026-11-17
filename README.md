@@ -10,8 +10,9 @@ never uploaded.
 The app skips older files before reading their contents, uses up to four workers,
 and caches completed results locally for fast repeat scans. Counts come from
 completed chest searches and destroyed unopened chests with recorded player
-attribution. They share one **Opened** counter, and each chest counts once per
-replay. A **+** means the recording may miss additional interactions, especially
+attribution. They share one **Opened** counter. A confirmed reset allows a chest
+to count again; repeated updates and reappearing placed chests count once within
+the same reset cycle. A **+** means the recording may miss additional interactions, especially
 those by distant teammates. Destruction without supported player attribution
 is excluded. Counts are a confirmed minimum.
 
@@ -25,9 +26,13 @@ recorded-reward counts, and CSV downloads include reward rows with blank chest
 count columns.
 
 The recording may miss distant reward animations. **None recorded** does not
-mean no reward was received. Gizmo reward detection is currently unavailable.
-These records describe successful prize rolls and do not independently confirm
-the final locker transaction. Re-scan your files after the update to refresh the
+mean no reward was received. Recorded treasure-handler receipts without a prize
+ID appear as **Treasure (unknown type)** and may include Gizmos or shared teammate
+rewards. The **Record** column distinguishes receipts from successful prize results;
+generic receipts do not identify the source chest or opener. A unique nearby prize
+result for the same recipient takes priority over a receipt to avoid duplicate records.
+These records do not independently confirm the final locker transaction.
+Re-scan your files after the update to refresh the
 locally cached results.
 
 Fortnite's usual Windows replay folder is
@@ -52,6 +57,7 @@ WebAssembly. Run the browser tests with Node.js:
 
 ```sh
 node --test src/FortniteChestTracker.Web/tests/*.test.mjs
+dotnet test --project tests/FortniteChestTracker.Test -c Release
 ```
 
 See the [browser guide](src/FortniteChestTracker.Web/README.md) for folder access,

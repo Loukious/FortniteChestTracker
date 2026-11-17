@@ -258,6 +258,7 @@ test('rewards keep separate players with the same prize and show the recorded re
   assert.deepEqual(rows.map(row => row.children[1].textContent), ['Other player', 'Teammate']);
   assert.deepEqual(rows.map(row => row.children[2].textContent), ['Loading screen', 'Loading screen']);
   assert.deepEqual(rows.map(row => row.children[5].textContent), ['00:45', '01:25']);
+  assert.deepEqual(rows.map(row => row.children[7].textContent), ['Successful prize result', 'Successful prize result']);
   assert.equal(app.elements.get('rewards-count').textContent, '(2)');
   assert.equal(app.elements.get('rewards-empty').hidden, true);
 });
@@ -302,7 +303,7 @@ test('empty reward evidence is displayed as none recorded and older report shape
   assert.equal(app.elements.get('players-body').children[0].children[4].textContent, 'None recorded');
   const html = readFileSync(new URL('../wwwroot/index.html', import.meta.url), 'utf8');
   assert.match(html, /None recorded<\/strong> does not mean no reward was received/);
-  assert.match(html, /Gizmo reward detection is currently unavailable/);
+  assert.match(html, /Gizmo category cannot be confirmed/);
 });
 
 test('recorded reward counts leave squad chest totals unchanged and exclude other recipients from squad counts', () => {
@@ -319,7 +320,7 @@ test('recorded reward counts leave squad chest totals unchanged and exclude othe
 
 test('reward coverage exceptions stay visible even when a match has no reward records and follow the owner filter', () => {
   const app = loadApp();
-  const baseCoverage = 'Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.';
+  const baseCoverage = 'Recorded reward results and treasure receipts only; replay may miss distant rewards. Unknown-type receipts may be shared; Gizmo category cannot be confirmed.';
   app.set('report', { matches: [
     match({ rewards: [], rewardCoverage: baseCoverage + ' Some reward updates could not be read.' }),
     match({ matchId: 'match-b', ownerId: 'owner-b', ownerName: 'Owner B', rewardCoverage: baseCoverage,
@@ -346,8 +347,8 @@ test('reward CSV rows preserve the chest schema and cannot double-count chest op
     reward('other', { playerName: 'Other, "player"', isTeammate: false, category: 'Gold outfit', tier: 'Supreme' })] })]);
   const rows = app.run('csvRows(matches)');
   assert.equal(rows.length, 5);
-  assert.equal(rows[0].length, 19);
-  assert.deepEqual(Array.from(rows[0].slice(14)), ['Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID']);
+  assert.equal(rows[0].length, 20);
+  assert.deepEqual(Array.from(rows[0].slice(14)), ['Row type', 'Reward category', 'Reward tier', 'Reward replay time', 'Prize template ID', 'Reward evidence']);
   assert.equal(rows[1][9], 7);
   assert.equal(rows[1][12], 10);
   assert.equal(rows[1][14], 'Chest');
@@ -355,10 +356,27 @@ test('reward CSV rows preserve the chest schema and cannot double-count chest op
   assert.deepEqual(Array.from(rows[3].slice(9, 13)), ['', '', '', '']);
   assert.equal(rows[3][15], 'Loading screen');
   assert.equal(rows[3][17], '00:45');
+  assert.equal(rows[3][19], 'Successful prize result');
   assert.equal(rows[4][8], 'Other player');
   const csv = app.run("csvRows(matches).map(line => line.map(csvEscape).join(',')).join('\\r\\n')");
   assert.ok(csv.includes('"\'=HYPERLINK(""example"")"'));
   assert.ok(csv.includes('"Other, ""player"""'));
+});
+
+test('unknown treasure receipts show receipt evidence and export without invented prize IDs or chest counts', () => {
+  const app = loadApp();
+  app.set('matches', [match({ rewards: [reward('owner-a', { isOwner: true, isTeammate: false,
+    category: 'Treasure (unknown type)', tier: 'Unknown', prizeTemplateId: '',
+    evidence: 'Treasure received (may be shared)' })] })]);
+  app.run('renderRewards(matches);');
+  const cells = app.elements.get('rewards-body').children[0].children;
+  assert.equal(cells[2].textContent, 'Treasure (unknown type)');
+  assert.equal(cells[7].textContent, 'Treasure received (may be shared)');
+  const row = app.run('csvRows(matches)')[3];
+  assert.deepEqual(Array.from(row.slice(9, 13)), ['', '', '', '']);
+  assert.equal(row[18], '');
+  assert.equal(row[19], 'Treasure received (may be shared)');
+  assert.equal(app.run('playerRewardCount(matches, "owner-a")'), 1);
 });
 
 test('Rewards participates in accessible tab activation and keyboard navigation', () => {

@@ -4,7 +4,7 @@ public static class ChestEligibility
 {
     private static readonly HashSet<string> Build = new(StringComparer.OrdinalIgnoreCase)
     {
-        "Playlist_DefaultSolo", "Playlist_DefaultDuo", "Playlist_DefaultTrio", "Playlist_DefaultSquad"
+        "Playlist_DefaultSolo", "Playlist_DefaultDuo", "Playlist_DefaultTrio", "Playlist_Trios", "Playlist_DefaultSquad"
     };
     private static readonly HashSet<string> ZeroBuild = new(StringComparer.OrdinalIgnoreCase)
     {

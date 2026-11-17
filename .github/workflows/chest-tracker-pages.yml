@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/chest-tracker-pages.yml'
+      - 'tests/**'
       - 'src/FortniteChestTracker.Web/**'
       - 'src/FortniteChestTracker.Core/**'
       - 'src/FortniteReplayReader/**'
@@ -49,6 +50,9 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
+
+      - name: Test replay and report regressions
+        run: dotnet test --project tests/FortniteChestTracker.Test -c Release --no-progress --output Normal
 
       - name: Test browser app
         run: node --test src/FortniteChestTracker.Web/tests/*.test.mjs

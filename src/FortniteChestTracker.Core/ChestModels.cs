@@ -9,7 +9,20 @@ public sealed record ChestPlayer(string Name, string PlayerId, bool IsOwner, int
 public sealed record ChestReward(
     string PlayerName, string? PlayerId, bool IsOwner, bool IsTeammate,
     string Category, string Tier, string PrizeTemplateId, float? ReplayTimeSeconds,
-    uint RewardActorGuid, int PrizeIndex);
+    uint RewardActorGuid, int PrizeIndex)
+{
+    public string Evidence { get; init; } = ChestRewardEvidence.PrizeResult;
+    public uint? SourceChestActorGuid { get; init; }
+    public uint? AbilitySystemActorGuid { get; init; }
+    public int? AbilitySpecId { get; init; }
+    public int? GrantSequence { get; init; }
+}
+
+public static class ChestRewardEvidence
+{
+    public const string PrizeResult = "Successful prize result";
+    public const string Receipt = "Treasure received (may be shared)";
+}
 
 public sealed record ChestMatch(
     string FilePath, string MatchId, string OwnerName, string OwnerId, string Mode,
@@ -45,7 +58,7 @@ public sealed record ChestScanReport(
 
 public static class ChestRewardCoverage
 {
-    public const string RecordedOnly = "Recorded rewards only; replay may miss distant reward animations. Gizmo reward detection unavailable.";
+    public const string RecordedOnly = "Recorded reward results and treasure receipts only; replay may miss distant rewards. Unknown-type receipts may be shared; Gizmo category cannot be confirmed.";
 }
 
 public static class ChestCoverage

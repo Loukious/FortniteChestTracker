@@ -47,15 +47,51 @@ internal static class ChestMatchFactory
                 return new ChestReward(
                     recipient?.PlayerName ?? recipient?.PlayerNameCustomOverride ?? recipient?.StreamerModeName ?? "Unidentified player",
                     reward.PlayerId, isOwner, isTeammate, category, tier, reward.PrizeTemplateId,
-                    reward.ReplayTimeSeconds, reward.RewardActorGuid, reward.PrizeIndex);
+                    reward.ReplayTimeSeconds, reward.RewardActorGuid, reward.PrizeIndex)
+                    { SourceChestActorGuid = reward.SourceChestActorGuid };
             }).OfType<ChestReward>()
-            .OrderBy(reward => reward.ReplayTimeSeconds ?? float.MaxValue).ToArray();
+            .ToList();
+        var grants = analysis.Grants.DistinctBy(grant => (grant.AbilitySystemActorGuid,
+            grant.PlayerStateActorGuid, grant.AbilitySpecId, grant.GrantSequence)).ToArray();
+        foreach (var grant in grants)
+        {
+            // The animation and handler can both describe the same treasure. Only
+            // suppress a receipt with a unique same-recipient result and a unique
+            // receipt in that result's short animation window. Never join teammates
+            // or infer an opener from proximity. Ambiguous records remain visible.
+            var nearbyResults = rewards.Where(reward => reward.Evidence == ChestRewardEvidence.PrizeResult &&
+                SameRecipientNearTime(grant, reward)).ToArray();
+            if (nearbyResults.Length == 1 && grants.Count(other =>
+                SameRecipientNearTime(other, nearbyResults[0])) == 1) continue;
+            var recipient = analysis.Replay.PlayerData.FirstOrDefault(player =>
+                grant.PlayerId is not null && player.PlayerId is not null &&
+                player.PlayerId.Equals(grant.PlayerId, StringComparison.OrdinalIgnoreCase));
+            if (recipient?.IsBot == true) continue;
+            var isOwner = grant.PlayerId is not null &&
+                grant.PlayerId.Equals(owner.PlayerId, StringComparison.OrdinalIgnoreCase);
+            var isTeammate = !isOwner && owner.TeamIndex is > 0 && recipient?.TeamIndex == owner.TeamIndex;
+            rewards.Add(new ChestReward(
+                recipient?.PlayerName ?? recipient?.PlayerNameCustomOverride ?? recipient?.StreamerModeName ?? "Unidentified player",
+                grant.PlayerId, isOwner, isTeammate, "Treasure (unknown type)", "Unknown", "",
+                grant.ReplayTimeSeconds, 0, grant.AbilitySpecId)
+                { Evidence = ChestRewardEvidence.Receipt, AbilitySystemActorGuid = grant.AbilitySystemActorGuid,
+                    AbilitySpecId = grant.AbilitySpecId, GrantSequence = grant.GrantSequence });
+        }
+        var orderedRewards = rewards.OrderBy(reward => reward.ReplayTimeSeconds ?? float.MaxValue).ToArray();
         var rewardCoverage = ChestRewardCoverage.RecordedOnly;
         if (analysis.HasRewardDecodeErrors) rewardCoverage += " Some reward updates could not be read.";
+        if (analysis.HasGrantDecodeErrors) rewardCoverage += " Some treasure receipts could not be read.";
         if (rewards.Any(reward => reward.PlayerName == "Unidentified player"))
             rewardCoverage += " Some reward recipients could not be identified.";
         return new ChestMatch(path, matchId, players.Single(player => player.IsOwner).Name,
             owner.PlayerId!, mode, analysis.Replay.GameData.CurrentPlaylist, matchDate, players, coverage)
-            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, Rewards = rewards, RewardCoverage = rewardCoverage };
+            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, Rewards = orderedRewards, RewardCoverage = rewardCoverage };
     }
+
+    private static bool SameRecipientNearTime(ReplayTreasureGrant grant, ChestReward reward) =>
+        !string.IsNullOrWhiteSpace(grant.PlayerId) && !string.IsNullOrWhiteSpace(reward.PlayerId) &&
+        grant.PlayerId.Equals(reward.PlayerId, StringComparison.OrdinalIgnoreCase) &&
+        grant.ReplayTimeSeconds is float receipt && float.IsFinite(receipt) && receipt >= 0 &&
+        reward.ReplayTimeSeconds is float result && float.IsFinite(result) && result >= 0 &&
+        MathF.Abs(receipt - result) <= 5;
 }

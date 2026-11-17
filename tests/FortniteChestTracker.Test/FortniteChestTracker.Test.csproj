@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><AssemblyName>FortniteReplayReader.Test</AssemblyName></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/FortniteReplayReader/FortniteReplayReader.csproj" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestModels.cs" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestEligibility.cs" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestMatchFactory.cs" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestRewardCatalog.cs" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestReportBuilder.cs" />
+    <Compile Include="../../src/FortniteChestTracker.Core/ChestReportExporter.cs" />
+  </ItemGroup>
+</Project>
