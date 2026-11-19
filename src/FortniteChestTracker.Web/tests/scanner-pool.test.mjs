@@ -58,7 +58,7 @@ test('parallelism respects memory limits, reserves one CPU, and stays within the
 test('largest files are balanced by size and retain their aligned paths', () => {
   const { scanner, workers } = fixture(3, 8);
   const chosenFiles = files([10, 90, 20, 80]);
-  const data = scan(chosenFiles);
+  const data = { ...scan(chosenFiles), includeOtherModes: true };
   scanner.postMessage(data);
   assert.deepEqual(workers.map(worker => worker.messages[0].files.map(file => file.size)), [[90, 10], [80, 20]]);
   for (const worker of workers) {
@@ -67,6 +67,7 @@ test('largest files are balanced by size and retain their aligned paths', () => 
     assert.deepEqual(chunk.skipped, []);
     assert.deepEqual(chunk.filePaths, chunk.files.map(file => `Demos/${file.name}`));
     assert.equal(chunk.since, data.since);
+    assert.equal(chunk.includeOtherModes, true);
   }
   assert.deepEqual(chosenFiles.map(file => file.size), [10, 90, 20, 80]);
 });

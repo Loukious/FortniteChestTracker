@@ -19,7 +19,7 @@ public static partial class Program
 
     [JSExport]
     public static string ScanReplay([JSMarshalAs<JSType.Array<JSType.Number>>] byte[] bytes,
-        string filePath, string sinceText, string contentHash)
+        string filePath, string sinceText, string contentHash, bool includeOtherModes)
     {
         try
         {
@@ -39,7 +39,7 @@ public static partial class Program
             if (DateOnly.FromDateTime(matchDate) < since)
                 return Skip(filePath, $"Match started before {since:yyyy-MM-dd}.");
             var mode = ChestEligibility.GetMode(replay.GameData.CurrentPlaylist,
-                replay.GameData.IsTournamentRound, replay.GameData.IsLargeTeamGame == true);
+                replay.GameData.IsTournamentRound, replay.GameData.IsLargeTeamGame == true, includeOtherModes);
             if (mode is null)
                 return Skip(filePath, "Outside standard BR / Zero Build: " +
                     (replay.GameData.CurrentPlaylist ?? "playlist unavailable"));

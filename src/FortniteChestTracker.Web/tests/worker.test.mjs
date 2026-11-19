@@ -57,9 +57,9 @@ async function fixture({ parse = (_bytes, path, _since, hash) => match(path, has
   const messages = [], parseCalls = [], buildCalls = [], handlers = new Map();
   let actualCache;
   const parser = {
-    ScanReplay(bytes, filePath, since, contentHash) {
-      parseCalls.push({ bytes: Array.from(bytes), filePath, since, contentHash });
-      return JSON.stringify(parse(bytes, filePath, since, contentHash));
+    ScanReplay(bytes, filePath, since, contentHash, includeOtherModes) {
+      parseCalls.push({ bytes: Array.from(bytes), filePath, since, contentHash, includeOtherModes });
+      return JSON.stringify(parse(bytes, filePath, since, contentHash, includeOtherModes));
     },
     BuildReport(matchesJson, skippedJson, totalFiles) {
       const input = { matches: JSON.parse(matchesJson), skipped: JSON.parse(skippedJson), totalFiles };
@@ -81,8 +81,8 @@ async function fixture({ parse = (_bytes, path, _since, hash) => match(path, has
   await vm.runInContext('ready', context);
   return { messages, parseCalls, buildCalls, cache: actualCache,
     async send(data) { await handlers.get('message')({ data }); return messages.at(-1); },
-    scan(files, filePaths = files.map(file => file.name), requestId = 1, since = '2026-11-01', skipped = []) {
-      return this.send({ type: 'scan', files, filePaths, requestId, since, skipped, totalFiles: files.length + skipped.length });
+    scan(files, filePaths = files.map(file => file.name), requestId = 1, since = '2026-11-01', skipped = [], includeOtherModes = false) {
+      return this.send({ type: 'scan', files, filePaths, requestId, since, skipped, includeOtherModes, totalFiles: files.length + skipped.length });
     } };
 }
 
@@ -113,6 +113,20 @@ test('overwritten content and a different date cutoff cannot reuse stale parser 
   assert.notEqual(worker.parseCalls[0].contentHash, worker.parseCalls[1].contentHash);
   assert.equal(worker.parseCalls[1].contentHash, worker.parseCalls[2].contentHash);
   assert.equal(worker.parseCalls[2].since, '2026-11-02');
+});
+
+test('enabling other modes replaces cached playlist skips and turning it off restores the standard result', async () => {
+  const worker = await fixture({ parse: (_bytes, path, _since, hash, includeOtherModes) => includeOtherModes
+    ? match(path, hash) : { skipped: { fileName: path, reason: 'Outside standard BR / Zero Build: Playlist_Respawn_Alt_MiniMobile' } } });
+  const file = replay('rumble.replay');
+  assert.equal((await worker.scan([file])).report.matches.length, 0);
+  const enabled = await worker.scan([file], undefined, 2, '2026-11-01', [], true);
+  assert.equal(enabled.report.matches.length, 1);
+  assert.equal(enabled.report.skipped.length, 0);
+  assert.equal((await worker.scan([file], undefined, 3)).report.matches.length, 0);
+  assert.equal((await worker.scan([file], undefined, 4, '2026-11-01', [], true)).report.matches.length, 1);
+  assert.equal(worker.parseCalls.length, 2);
+  assert.deepEqual(worker.parseCalls.map(call => call.includeOtherModes), [false, true]);
 });
 
 test('stable skips are cached with the selected file path while transient read and live skips retry', async () => {

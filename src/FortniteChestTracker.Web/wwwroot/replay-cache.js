@@ -1,5 +1,5 @@
 // Bump this when replay parsing, eligibility, ownership, chest counts, or reward detection changes.
-export const PARSER_CACHE_VERSION = 'chest-parser-2026-11-17-cycles-and-receipts-v1';
+export const PARSER_CACHE_VERSION = 'chest-parser-2026-11-19-other-modes-v1';
 
 const DATABASE_NAME = 'fortnite-chest-tracker-replay-cache';
 const STORE_NAME = 'results';
@@ -23,9 +23,9 @@ export function createReplayCache(options = {}) {
   const memory = new Map();
   let databasePromise;
 
-  function keyFor(contentHash, since) {
+  function keyFor(contentHash, since, includeOtherModes) {
     if (typeof contentHash !== 'string' || !/^[a-f\d]{64}$/i.test(contentHash) || typeof since !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(since)) return null;
-    return `${version}:${since}:${contentHash.toLowerCase()}`;
+    return `${version}:${since}:${includeOtherModes === true ? 'other-br-modes' : 'standard-br'}:${contentHash.toLowerCase()}`;
   }
 
   function remember(key, json) {
@@ -72,8 +72,8 @@ export function createReplayCache(options = {}) {
     });
   }
 
-  async function readCachedResult(contentHash, since) {
-    const key = keyFor(contentHash, since);
+  async function readCachedResult(contentHash, since, includeOtherModes = false) {
+    const key = keyFor(contentHash, since, includeOtherModes);
     if (!key) return null;
     try {
       let json = memory.get(key);
@@ -92,8 +92,8 @@ export function createReplayCache(options = {}) {
     }
   }
 
-  async function writeCachedResult(contentHash, since, result) {
-    const key = keyFor(contentHash, since);
+  async function writeCachedResult(contentHash, since, result, includeOtherModes = false) {
+    const key = keyFor(contentHash, since, includeOtherModes);
     if (!key || !cacheableResult(result)) return false;
     try {
       const json = JSON.stringify(result);

@@ -154,6 +154,26 @@ test('the inclusive cutoff keeps midnight and rejects older files before worker 
   assert.equal(app.elements.get('since').disabled, true);
 });
 
+test('the other modes option is off by default, reaches the worker, and keeps completed report settings', () => {
+  const app = loadApp();
+  app.set('chosenFiles', [replay('rumble.replay', Date.now())]);
+  app.run('acceptFiles(chosenFiles, false); scan();');
+  assert.equal(app.workers[0].message.includeOtherModes, false);
+  app.workers[0].emit({ type: 'complete', report: { matches: [], skipped: [], filesScanned: 1 } });
+  app.elements.get('include-other-modes').checked = true;
+  app.run('scan();');
+  assert.equal(app.workers[0].message.includeOtherModes, true);
+  assert.equal(app.elements.get('include-other-modes').disabled, true);
+  app.workers[0].emit({ type: 'complete', report: { matches: [], skipped: [], filesScanned: 1 } });
+  assert.equal(app.elements.get('include-other-modes').disabled, false);
+  assert.match(app.elements.get('report-summary').textContent, /other Battle Royale modes included/);
+  app.elements.get('include-other-modes').checked = false;
+  assert.match(app.elements.get('report-summary').textContent, /other Battle Royale modes included/);
+  app.run('scan();');
+  app.workers[0].emit({ type: 'complete', report: { matches: [], skipped: [], filesScanned: 1 } });
+  assert.match(app.elements.get('report-summary').textContent, /regular Battle Royale \/ Zero Build only/);
+});
+
 test('unknown file timestamps defer to the replay date instead of claiming the file is old', () => {
   const app = loadApp();
   app.set('chosenFiles', [replay('unknown.replay', NaN)]);

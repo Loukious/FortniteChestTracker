@@ -11,14 +11,20 @@ public static class ChestEligibility
         "Playlist_NoBuildBR_Solo", "Playlist_NoBuildBR_Duo", "Playlist_NoBuildBR_Trio", "Playlist_NoBuildBR_Squad"
     };
 
-    public static string? GetMode(string? playlist, bool isTournament = false, bool isLargeTeam = false)
+    public static string? GetMode(string? playlist, bool isTournament = false, bool isLargeTeam = false,
+        bool includeOtherModes = false)
     {
-        if (string.IsNullOrWhiteSpace(playlist) || isTournament || isLargeTeam) return null;
+        if (string.IsNullOrWhiteSpace(playlist) || !includeOtherModes && (isTournament || isLargeTeam)) return null;
         // Readers may retain either a full asset path or its normalized leaf name.
         var name = playlist.Trim().Trim('\'', '"').Split('/').Last().Split('.').Last();
+        if (string.IsNullOrWhiteSpace(name)) return null;
+        if (name.Equals("Playlist_Creative", StringComparison.OrdinalIgnoreCase) ||
+            name.Equals("Playlist_VK_Play", StringComparison.OrdinalIgnoreCase)) return null;
         if (Build.Contains(name)) return "Battle Royale · Build";
         if (ZeroBuild.Contains(name)) return "Battle Royale · Zero Build";
-        return null;
+        if (!includeOtherModes) return null;
+        if (name.Equals("Playlist_Respawn_Alt_MiniMobile", StringComparison.OrdinalIgnoreCase)) return "Respawn Rumble";
+        return "Other mode · " + name;
     }
 
     public static bool IsOtherSubgame(IEnumerable<string>? gameSpecificData) => gameSpecificData?.Any(value =>

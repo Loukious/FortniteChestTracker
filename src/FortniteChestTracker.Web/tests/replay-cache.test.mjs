@@ -87,6 +87,18 @@ test('a different cutoff or parser version never reuses the previous result', as
   assert.equal((await oldParser.readCachedResult(HASH, SINCE)).match.matchId, 'match-a');
 });
 
+test('mode selections have separate cache entries across visits', async () => {
+  const indexedDB = new IndexedDBFixture();
+  const first = createReplayCache({ indexedDB });
+  const skipped = { skipped: { fileName: 'rumble.replay', reason: 'Outside standard BR / Zero Build' } };
+  await first.writeCachedResult(HASH, SINCE, skipped);
+  assert.equal(await first.readCachedResult(HASH, SINCE, true), null);
+  await first.writeCachedResult(HASH, SINCE, matchResult(), true);
+  const nextVisit = createReplayCache({ indexedDB });
+  assert.deepEqual(await nextVisit.readCachedResult(HASH, SINCE, false), skipped);
+  assert.equal((await nextVisit.readCachedResult(HASH, SINCE, true)).match.matchId, 'match-a');
+});
+
 test('workers can rewrite returned source paths without changing the cached result', async () => {
   const indexedDB = new IndexedDBFixture();
   const cache = createReplayCache({ indexedDB });

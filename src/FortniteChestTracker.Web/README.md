@@ -32,6 +32,11 @@ timestamp, so this prefilter does not use the Windows file creation date. Select
 newer files are also checked against the recording timestamp and actual match date
 inside the replay. The default start date is November 1, 2026, inclusive.
 
+Check **Include other Battle Royale modes** before scanning to include Respawn
+Rumble, Reload, OG, ranked, and other Battle Royale playlists. It is off by default.
+Recorded chest counts and treasure rewards from those matches use the same report
+and CSV export. The completed report states which mode setting was used.
+
 Select the files to scan, then choose **Scan selected replays**. The parser loads
 when scanning starts. File contents are processed locally and are never uploaded.
 The app uses one to four workers according to the browser's reported CPU cores and
@@ -42,7 +47,7 @@ Completed per-file results are cached locally in IndexedDB. The cache contains
 report metadata such as player names, IDs, chest counts, recorded rewards, and skip reasons, without
 storing replay bytes. Eligible files are read and hashed with SHA256 before cache
 lookup, even on repeat scans, so changed contents cannot reuse an old result. Cache
-keys also include the parser version, selected start date, and browser time zone.
+keys also include the parser version, selected start date, mode setting, and browser time zone.
 Live recordings and read failures are not cached. Scanning still works if browser
 storage is unavailable.
 

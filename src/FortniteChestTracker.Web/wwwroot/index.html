@@ -15,7 +15,7 @@
     <header class="page-header">
       <p class="eyebrow">FORTNITE SHOP TOKEN</p>
       <h1>Chest Tracker</h1>
-      <p class="intro">Opened counts for the replay owner and their teammates, plus recorded treasure rewards, in regular Battle Royale and Zero Build.</p>
+      <p class="intro">Opened counts for the replay owner and their teammates, plus recorded treasure rewards, in Battle Royale and Zero Build. Enable other Battle Royale modes to include Respawn Rumble and more.</p>
     </header>
 
     <section class="panel selection-panel" aria-labelledby="selection-heading">
@@ -33,6 +33,10 @@
           <input type="file" id="files-input" accept=".replay" multiple hidden aria-label="Choose replay files">
         </div>
         <label class="date-field">Matches since (inclusive)<input type="date" id="since" value="2026-11-01" required></label>
+      </div>
+      <div class="mode-option">
+        <label><input type="checkbox" id="include-other-modes" aria-describedby="mode-option-hint"> Include other Battle Royale modes</label>
+        <p class="hint" id="mode-option-hint">Include Respawn Rumble, Reload, OG, ranked, and other Battle Royale playlists. Leave unchecked for regular Battle Royale and Zero Build only.</p>
       </div>
       <div class="folder-location">
         <div><p class="path-label">Fortnite's usual Windows replay folder</p><code id="default-folder-path">%LOCALAPPDATA%\FortniteGame\Saved\Demos</code><p class="hint">Paste this into the folder picker address bar.</p></div>

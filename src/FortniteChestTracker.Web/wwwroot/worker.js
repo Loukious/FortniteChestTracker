@@ -28,6 +28,7 @@ self.addEventListener('message', async event => {
             return;
         }
         const { files, filePaths = [], since, totalFiles } = event.data;
+        const includeOtherModes = event.data.includeOtherModes === true;
         const skipped = [...(event.data.skipped ?? [])];
         const matches = [];
         let completed = skipped.length;
@@ -38,7 +39,7 @@ self.addEventListener('message', async event => {
                 const buffer = await file.arrayBuffer();
                 const digest = await crypto.subtle.digest('SHA-256', buffer);
                 const contentHash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
-                let result = await readCachedResult(contentHash, since);
+                let result = await readCachedResult(contentHash, since, includeOtherModes);
                 if (result) {
                     if (result.match) {
                         result.match.filePath = fileName;
@@ -46,8 +47,8 @@ self.addEventListener('message', async event => {
                     }
                     if (result.skipped) result.skipped.fileName = fileName;
                 } else {
-                    result = JSON.parse(parser.ScanReplay(new Uint8Array(buffer), fileName, since, contentHash));
-                    await writeCachedResult(contentHash, since, result);
+                    result = JSON.parse(parser.ScanReplay(new Uint8Array(buffer), fileName, since, contentHash, includeOtherModes));
+                    await writeCachedResult(contentHash, since, result, includeOtherModes);
                 }
                 if (result.match) matches.push(result.match);
                 if (result.skipped) skipped.push(result.skipped);

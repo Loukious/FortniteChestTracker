@@ -2,7 +2,7 @@ import { ReplayScanner } from './scanner-pool.js';
 
 const byId = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
-  'choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'copy-path', 'default-folder-path', 'folder-memory-hint', 'folder-input', 'files-input', 'since', 'folder-summary',
+  'choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'copy-path', 'default-folder-path', 'folder-memory-hint', 'folder-input', 'files-input', 'since', 'include-other-modes', 'folder-summary',
   'files-panel', 'selection-summary', 'select-all', 'files-body', 'scan-selection-label', 'scan',
   'status', 'cancel', 'progress', 'report', 'report-summary', 'owner-filter', 'export',
   'owner-total', 'teammate-total', 'squad-total', 'match-total', 'owners-summary', 'files-summary',
@@ -14,6 +14,7 @@ const ui = Object.fromEntries([
 const state = {
   files: [], eligible: [], dateSkipped: [], selected: new Set(), worker: null, readerReady: false,
   busy: false, choosing: false, report: null, reportSince: null, scanSince: null, scanStartedAt: null, visibleMatches: [], selectedMatch: null,
+  scanIncludeOtherModes: false, reportIncludeOtherModes: false,
   savedFolder: null, savedFolderVersion: 0
 };
 const relativePaths = new WeakMap();
@@ -335,7 +336,7 @@ function setBusy(busy) {
 
 function refreshControls() {
   const locked = state.busy || state.choosing;
-  for (const id of ['choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'since']) ui[id].disabled = locked;
+  for (const id of ['choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'since', 'include-other-modes']) ui[id].disabled = locked;
   ui.cancel.hidden = !state.busy;
   ui.export.disabled = locked || !state.report;
   const eligibleKeys = new Set(state.eligible.map(fileKey));
@@ -372,6 +373,7 @@ function createWorker() {
       }
       state.report = message.report;
       state.reportSince = state.scanSince;
+      state.reportIncludeOtherModes = state.scanIncludeOtherModes;
       ui.progress.hidden = true;
       setBusy(false);
       populateReport();
@@ -401,6 +403,7 @@ function scan() {
   const files = state.eligible.filter((file) => state.selected.has(fileKey(file)));
   if (files.length === 0) return;
   state.scanSince = ui.since.value;
+  state.scanIncludeOtherModes = ui['include-other-modes'].checked === true;
   state.scanStartedAt = Date.now();
   const skipped = [...state.dateSkipped, ...state.eligible.filter((file) => !state.selected.has(fileKey(file))).map((file) => ({ fileName: filePath(file), reason: 'Not selected for this scan; contents not read.' }))];
   setBusy(true);
@@ -409,7 +412,8 @@ function scan() {
   setStatus(state.readerReady ? 'Reading selected replays…' : 'Loading the replay reader… Your files will be processed in this browser.');
   try {
     const worker = state.worker || createWorker();
-    worker.postMessage({ type: 'scan', files, filePaths: files.map(filePath), since: state.scanSince, skipped, totalFiles: state.files.length });
+    worker.postMessage({ type: 'scan', files, filePaths: files.map(filePath), since: state.scanSince,
+      includeOtherModes: state.scanIncludeOtherModes, skipped, totalFiles: state.files.length });
   } catch (error) {
     failScan(error.message || String(error));
   }
@@ -434,7 +438,7 @@ function populateReport() {
   }
   ui['owner-filter'].replaceChildren(...options);
   ui['owner-filter'].value = owners.has(previousOwner) ? previousOwner : owners.size === 1 ? owners.keys().next().value : '';
-  ui['report-summary'].textContent = `Last completed scan · matches since ${state.reportSince}`;
+  ui['report-summary'].textContent = `Last completed scan · matches since ${state.reportSince} · ${state.reportIncludeOtherModes ? 'other Battle Royale modes included' : 'regular Battle Royale / Zero Build only'}`;
   ui['files-summary'].textContent = `${number.format(state.report.filesScanned)} files considered · ${number.format(state.report.skipped.length)} skipped`;
   ui['skipped-count'].textContent = `(${number.format(state.report.skipped.length)})`;
   const skippedRows = document.createDocumentFragment();

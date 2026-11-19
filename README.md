@@ -7,6 +7,11 @@ rewards in regular Fortnite Battle Royale and Zero Build matches. Choose your re
 scan the files you need. Replays are processed locally in your browser and are
 never uploaded.
 
+Check **Include other Battle Royale modes** before scanning to include Respawn
+Rumble, Reload, OG, ranked, and other Battle Royale playlists. The option is off
+by default. Results and CSV exports include recorded chest counts and treasure
+rewards from the enabled modes.
+
 The app skips older files before reading their contents, uses up to four workers,
 and caches completed results locally for fast repeat scans. Counts come from
 completed chest searches and destroyed unopened chests with recorded player

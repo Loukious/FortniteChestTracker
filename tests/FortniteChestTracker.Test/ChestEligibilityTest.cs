@@ -55,6 +55,45 @@ public class ChestEligibilityTest
     }
 
     [Theory]
+    [InlineData("Playlist_Respawn_Alt_MiniMobile")]
+    [InlineData("/Game/Athena/Playlists/Respawn/Playlist_Respawn_Alt_MiniMobile.Playlist_Respawn_Alt_MiniMobile")]
+    public void RespawnRumbleLargeTeamReplayRequiresOtherModesOption(string playlist)
+    {
+        Assert.Null(ChestEligibility.GetMode(playlist, isLargeTeam: true));
+        Assert.Equal("Respawn Rumble", ChestEligibility.GetMode(playlist, isLargeTeam: true, includeOtherModes: true));
+    }
+
+    [Theory]
+    [InlineData("Playlist_RE_SourSpawnSquad", false, false)]
+    [InlineData("Playlist_OGSquads", false, false)]
+    [InlineData("Playlist_NoBuildBR_Squad_Ranked", false, false)]
+    [InlineData("Playlist_ShowdownTournament_NoBuildBR_Squad", true, false)]
+    [InlineData("Playlist_Respawn_24", false, true)]
+    public void OtherKnownPlaylistRemainsVisibleWhenEnabled(string playlist, bool tournament, bool largeTeam)
+    {
+        Assert.Null(ChestEligibility.GetMode(playlist, tournament, largeTeam));
+        Assert.Equal("Other mode · " + playlist, ChestEligibility.GetMode(playlist, tournament, largeTeam, true));
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" / ")]
+    [InlineData("Playlist_Creative")]
+    [InlineData("Playlist_VK_Play")]
+    public void OtherModesOptionStillRequiresNonCreativePlaylist(string? playlist)
+    {
+        Assert.Null(ChestEligibility.GetMode(playlist, includeOtherModes: true));
+    }
+
+    [Fact]
+    public void OtherModesOptionPreservesStandardModeNames()
+    {
+        Assert.Equal("Battle Royale · Build", ChestEligibility.GetMode("Playlist_DefaultSquad", includeOtherModes: true));
+        Assert.Equal("Battle Royale · Zero Build", ChestEligibility.GetMode("Playlist_NoBuildBR_Squad", includeOtherModes: true));
+    }
+
+    [Theory]
     [InlineData("SubGame=Campaign")]
     [InlineData("VerseURI=/Fortnite.com/GameFeatures/CreativeRoot")]
     [InlineData("VerseURI=/Fortnite.com/GameFeatures/VKPlayMinimumRoot+/fortnite.com/GameFeatures/FN1GFS")]
