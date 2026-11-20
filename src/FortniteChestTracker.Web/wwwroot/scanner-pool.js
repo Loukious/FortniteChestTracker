@@ -34,11 +34,12 @@ export class ReplayScanner extends EventTarget {
     };
     try {
       this.resizeWorkers(count);
+      for (const record of this.workers) record.crashes.clear();
       if (count === 1) {
         // Preserve the original worker's scan/report protocol, including its skips.
-        this.workers[0].worker.postMessage({ ...data, requestId });
+        this.send(this.workers[0], { ...data, requestId });
       } else {
-        groups.forEach((group, index) => this.workers[index].worker.postMessage({
+        groups.forEach((group, index) => this.send(this.workers[index], {
           ...data, requestId, files: group.files, filePaths: group.paths,
           skipped: [], totalFiles: group.files.length
         }));
@@ -65,15 +66,61 @@ export class ReplayScanner extends EventTarget {
   resizeWorkers(count) {
     while (this.workers.length > count) this.workers.pop().worker.terminate();
     while (this.workers.length < count) {
-      const worker = new this.Worker('./worker.js', { type: 'module' });
-      const record = { worker, ready: false, index: this.workers.length };
-      this.workers.push(record);
-      worker.addEventListener('message', event => this.receive(record, event.data));
-      worker.addEventListener('error', event => {
-        if (!this.isCurrentWorker(record)) return;
-        event.preventDefault?.();
-        this.fail(event.error ?? new Error(event.message || 'The replay reader could not start.'), 'error');
-      });
+      this.workers.push(this.createWorker(this.workers.length));
+    }
+  }
+
+  createWorker(index, crashes = new Map()) {
+    const worker = new this.Worker('./worker.js', { type: 'module' });
+    const record = { worker, ready: false, index, crashes, data: null };
+    worker.addEventListener('message', event => this.receive(record, event.data));
+    worker.addEventListener('error', event => {
+      if (!this.isCurrentWorker(record)) return;
+      event.preventDefault?.();
+      this.fail(event.error ?? new Error(event.message || 'The replay reader could not start.'), 'error');
+    });
+    return record;
+  }
+
+  send(record, data) {
+    record.data = data;
+    record.worker.postMessage(data);
+  }
+
+  replaceWorker(record, data) {
+    record.worker.terminate();
+    const replacement = this.createWorker(record.index, record.crashes);
+    this.workers[record.index] = replacement;
+    this.send(replacement, data);
+  }
+
+  recover(record, message, recycle = false) {
+    const data = record.data;
+    const index = message.fileIndex;
+    if (!data || data.type !== 'scan' || !Number.isInteger(index) || index < 0 || index > data.files.length ||
+        !Array.isArray(message.matches) || !Array.isArray(message.skipped) || !Number.isFinite(message.completed) ||
+        message.completed < 0 || message.completed > data.totalFiles) {
+      this.fail(new Error('The replay reader could not recover its completed results.'), 'message');
+      return;
+    }
+    const file = data.files[index];
+    const fileName = file ? data.filePaths?.[index] ?? (file.webkitRelativePath || file.name) : null;
+    const key = fileName ?? '\u0000report';
+    const attempts = recycle ? 0 : (record.crashes.get(key) ?? 0) + 1;
+    if (!recycle) record.crashes.set(key, attempts);
+    if (!file && attempts > 1) {
+      this.fail(new Error(message.message || 'The replay report could not be built.'), 'message');
+      return;
+    }
+    const skipFile = file && attempts > 1;
+    const skipped = [...message.skipped];
+    if (skipFile) skipped.push({ fileName, reason: 'Could not read replay: the browser decoder failed twice on this file. Other files were scanned; retry this file after the game finishes recording.' });
+    const next = index + Number(Boolean(skipFile));
+    try {
+      this.replaceWorker(record, { ...data, files: data.files.slice(next), filePaths: (data.filePaths ?? []).slice(next),
+        matches: message.matches, skipped, completed: message.completed + Number(Boolean(skipFile)) });
+    } catch (error) {
+      this.fail(error, 'error');
     }
   }
 
@@ -103,7 +150,20 @@ export class ReplayScanner extends EventTarget {
     }
     if (!scan || message.requestId !== (scan.stage === 'report' ? scan.reportRequestId : scan.requestId)) return;
     if (message.type === 'error') {
+      if (scan.stage === 'report' && record.data?.type === 'build-report' &&
+          /memory access out of bounds|out of memory|unreachable/i.test(message.message ?? '')) {
+        const attempts = (record.crashes.get('\u0000merge') ?? 0) + 1;
+        record.crashes.set('\u0000merge', attempts);
+        if (attempts === 1) {
+          try { this.replaceWorker(record, record.data); } catch (error) { this.fail(error, 'error'); }
+          return;
+        }
+      }
       this.fail(new Error(message.message || 'The replay reader could not complete the scan.'), 'message');
+      return;
+    }
+    if (['parser-crash', 'parser-recycle'].includes(message.type) && scan.stage === 'scan' && !scan.reports.has(record.index)) {
+      this.recover(record, message, message.type === 'parser-recycle');
       return;
     }
     if (message.type === 'progress') {
@@ -143,7 +203,7 @@ export class ReplayScanner extends EventTarget {
       try {
         // Run the shared C# builder once across all workers so duplicate matches
         // retain the same original/longest-recording preference as a serial scan.
-        this.workers[0].worker.postMessage({
+        this.send(this.workers[0], {
           type: 'build-report', requestId: scan.reportRequestId,
           matches: reports.flatMap(report => report.matches),
           skipped: [...scan.initialSkipped, ...reports.flatMap(report => report.skipped)],

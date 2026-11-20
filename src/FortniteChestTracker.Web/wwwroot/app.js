@@ -395,6 +395,7 @@ function failScan(message) {
   destroyWorker();
   setBusy(false);
   ui.progress.hidden = true;
+  if (state.report) ui['report-summary'].textContent = `Previous completed scan · latest scan failed · matches since ${state.reportSince}`;
   setStatus(`Scan failed: ${message}${state.report ? ' The previous completed report is still available.' : ''}`);
 }
 

@@ -174,6 +174,20 @@ test('the other modes option is off by default, reaches the worker, and keeps co
   assert.match(app.elements.get('report-summary').textContent, /regular Battle Royale \/ Zero Build only/);
 });
 
+test('a failed scan visibly identifies the retained report as the previous result', () => {
+  const app = loadApp();
+  app.set('chosenFiles', [replay('new.replay', Date.now())]);
+  app.run('acceptFiles(chosenFiles, false); scan();');
+  const previous = { matches: [], skipped: [], filesScanned: 1 };
+  app.workers[0].emit({ type: 'complete', report: previous });
+  app.run('scan();');
+  app.workers[0].emit({ type: 'error', message: 'memory access out of bounds' });
+  assert.equal(app.run('state.report'), previous);
+  assert.match(app.elements.get('report-summary').textContent, /Previous completed scan · latest scan failed/);
+  assert.match(app.elements.get('status').textContent, /previous completed report is still available/);
+  assert.equal(app.elements.get('scan').disabled, false);
+});
+
 test('unknown file timestamps defer to the replay date instead of claiming the file is old', () => {
   const app = loadApp();
   app.set('chosenFiles', [replay('unknown.replay', NaN)]);

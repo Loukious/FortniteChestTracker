@@ -43,6 +43,12 @@ The app uses one to four workers according to the browser's reported CPU cores a
 device memory. Each replay stays in one worker. Cancel stops all workers
 and preserves the previous completed report.
 
+Large scans recycle parser workers after small batches of uncached files to limit
+WebAssembly memory use. A memory failure retries the interrupted file in a fresh
+parser while retaining completed results. A file that fails twice is listed under
+**Skipped files** so other recordings can finish. A failed scan explicitly labels
+any retained report as the previous completed result.
+
 Completed per-file results are cached locally in IndexedDB. The cache contains
 report metadata such as player names, IDs, chest counts, recorded rewards, and skip reasons, without
 storing replay bytes. Eligible files are read and hashed with SHA256 before cache

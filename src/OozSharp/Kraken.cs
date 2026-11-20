@@ -53,6 +53,9 @@ public unsafe class Kraken
                 {
                     throw new DecoderException($"Failed DecodeStep method");
                 }
+                if (decoder.SourceUsed <= 0 || decoder.SourceUsed > sourceLength ||
+                    decoder.DestinationUsed <= 0 || decoder.DestinationUsed > remainingBytes)
+                    throw new DecoderException("Invalid decoder progress.");
 
                 sourceStart += decoder.SourceUsed;
                 sourceLength -= decoder.SourceUsed;
@@ -71,6 +74,7 @@ public unsafe class Kraken
         var sourceEnd = source + sourceBytesleft;
         if ((destinationOffset & 0x3FFFF) == 0)
         {
+            if (sourceBytesleft < 2) throw new DecoderException("Truncated block header.");
             decoder.Header = new KrakenHeader(source);
 
             source += 2;
@@ -88,8 +92,7 @@ public unsafe class Kraken
                 throw new DecoderException($"DecodeStep: sourceEnd - source ({sourceEnd - source}) < destinationBytesLeft ({destinationBytesLeft})");
             }
 
-            //throw new NotImplementedException($"memmove(dst_start + offset, src, dst_bytes_left);");
-            Buffer.MemoryCopy(source, destination + destinationOffset, sourceBytesleft, sourceBytesleft);
+            Buffer.MemoryCopy(source, destination + destinationOffset, remainingDestinationBytes, destinationBytesLeft);
 
             decoder.SourceUsed = (int)((source - sourceIn) + destinationBytesLeft);
             decoder.DestinationUsed = destinationBytesLeft;
@@ -102,6 +105,10 @@ public unsafe class Kraken
 
         if (isKrakenDecoder)
         {
+            if (sourceEnd - source < 3) throw new DecoderException("Truncated quantum header.");
+            var quantumSize = ((source[0] << 16) | (source[1] << 8) | source[2]) & 0x3FFFF;
+            var headerSize = quantumSize == 0x3FFFF ? 4 : decoder.Header.UseChecksums ? 6 : 3;
+            if (sourceEnd - source < headerSize) throw new DecoderException("Truncated quantum header.");
             quantumHeader = new KrakenQuantumHeader(source, decoder.Header.UseChecksums, out var bytesRead);
             source += bytesRead;
         }
@@ -118,10 +125,7 @@ public unsafe class Kraken
         // Too few bytes in buffer to make any progress?
         if (sourceEnd - source < quantumHeader.CompressedSize)
         {
-            decoder.SourceUsed = 0;
-            decoder.DestinationUsed = 0;
-
-            return true;
+            throw new DecoderException("Truncated compressed quantum.");
         }
 
         if (quantumHeader.CompressedSize > remainingDestinationBytes)
@@ -142,8 +146,7 @@ public unsafe class Kraken
             }
             else
             {
-                var val = quantumHeader.Checksum;
-                Buffer.MemoryCopy(&val, destination + destinationOffset, destinationBytesLeft, destinationBytesLeft);
+                new Span<byte>(destination + destinationOffset, destinationBytesLeft).Fill((byte)quantumHeader.Checksum);
             }
 
             decoder.SourceUsed = (int)(source - sourceIn);
@@ -167,7 +170,8 @@ public unsafe class Kraken
             decoder.SourceUsed = (int)((source - sourceIn) + destinationBytesLeft);
             decoder.DestinationUsed = destinationBytesLeft;
 
-            throw new NotImplementedException($"memmove(dst_start + offset, src, dst_bytes_left);");
+            Buffer.MemoryCopy(source, destination + destinationOffset, remainingDestinationBytes, destinationBytesLeft);
+            return true;
         }
 
         int numBytes;

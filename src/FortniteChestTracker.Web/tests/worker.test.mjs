@@ -201,6 +201,63 @@ test('unavailable optional cache storage keeps valid replay parsing available', 
   assert.equal(worker.parseCalls.length, 2);
 });
 
+test('a WebAssembly trap returns completed results and stops using the damaged parser', async () => {
+  const worker = await fixture({ parse: (_bytes, path, _since, hash) => {
+    if (path === 'bad.replay') { const error = new Error('memory access out of bounds'); error.name = 'RuntimeError'; throw error; }
+    return match(path, hash);
+  } });
+  const result = await worker.scan([replay('good.replay', 'good'), replay('bad.replay', 'bad'), replay('later.replay', 'later')]);
+  assert.equal(result.type, 'parser-crash');
+  assert.equal(result.fileIndex, 1);
+  assert.equal(result.completed, 1);
+  assert.deepEqual(result.matches.map(m => m.filePath), ['good.replay']);
+  assert.equal(worker.parseCalls.length, 2);
+  assert.equal(worker.buildCalls.length, 0);
+  const fresh = await fixture();
+  const complete = await fresh.send({ type: 'scan', requestId: 2, since: '2026-11-01', totalFiles: 3,
+    files: [replay('bad.replay', 'bad'), replay('later.replay', 'later')], matches: result.matches,
+    skipped: result.skipped, completed: result.completed });
+  assert.equal(complete.type, 'complete');
+  assert.equal(complete.report.matches.length, 3);
+  assert.equal(fresh.messages.filter(m => m.type === 'progress').at(-1).completed, 3);
+});
+
+test('a report-building trap returns all completed file results for recovery', async () => {
+  const worker = await fixture({ build: () => { const e = new Error('memory access out of bounds'); e.name = 'RuntimeError'; throw e; } });
+  const result = await worker.scan([replay('good.replay')]);
+  assert.equal(result.type, 'parser-crash');
+  assert.equal(result.fileIndex, 1);
+  assert.equal(result.completed, 1);
+  assert.equal(result.matches.length, 1);
+});
+
+test('uncached files recycle the heap in bounded batches while cache hits do not', async () => {
+  const worker = await fixture();
+  const files = Array.from({ length: 6 }, (_, i) => replay(`${i}.replay`, `bytes${i}`));
+  const partial = await worker.scan(files);
+  assert.equal(partial.type, 'parser-recycle');
+  assert.equal(partial.fileIndex, 4);
+  assert.equal(partial.completed, 4);
+  assert.equal(partial.matches.length, 4);
+  const fresh = await fixture();
+  const complete = await fresh.send({ type: 'scan', requestId: 2, since: '2026-11-01', totalFiles: 6,
+    files: files.slice(4), matches: partial.matches, skipped: partial.skipped, completed: partial.completed });
+  assert.equal(complete.type, 'complete');
+  assert.equal(complete.report.matches.length, 6);
+  const cached = await worker.scan(files.slice(0, 4));
+  assert.equal(cached.type, 'complete');
+  assert.equal(worker.parseCalls.length, 4);
+});
+
+test('managed out-of-memory skips request recovery without committing the failed file', async () => {
+  const worker = await fixture({ parse: (_bytes, path) => ({ skipped: { fileName: path, reason: 'Could not read replay: Arg_OutOfMemoryException' } }) });
+  const result = await worker.scan([replay('large.replay')]);
+  assert.equal(result.type, 'parser-crash');
+  assert.equal(result.fileIndex, 0);
+  assert.equal(result.completed, 0);
+  assert.deepEqual(result.skipped, []);
+});
+
 test('report failures are correlated so the scanner pool can reject the active request', async () => {
   const worker = await fixture({ build() { throw new Error('Report failed'); } });
   const scanFailure = await worker.scan([replay('first.replay')], undefined, 71);

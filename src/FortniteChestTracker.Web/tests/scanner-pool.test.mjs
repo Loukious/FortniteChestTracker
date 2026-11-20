@@ -55,6 +55,77 @@ test('parallelism respects memory limits, reserves one CPU, and stays within the
   assert.equal(small.workers.length, 2);
 });
 
+test('a trapped parser resumes from completed results in a fresh worker', () => {
+  const { scanner, workers, messages } = fixture(2, 8);
+  const chosen = files();
+  const oldSkip = { fileName: 'old.replay', reason: 'Old file' };
+  scanner.postMessage(scan(chosen, [oldSkip]));
+  const requestId = workers[0].messages[0].requestId;
+  workers[0].emit({ type: 'parser-crash', requestId, fileIndex: 1, completed: 2,
+    matches: [{ matchId: 'first' }], skipped: [oldSkip], message: 'memory access out of bounds' });
+  assert.equal(workers[0].terminated, true);
+  const resumed = workers[1].messages[0];
+  assert.deepEqual(resumed.files, chosen.slice(1));
+  assert.deepEqual(resumed.matches, [{ matchId: 'first' }]);
+  assert.equal(resumed.completed, 2);
+  assert.equal(resumed.totalFiles, 5);
+  workers[0].complete(report([{ matchId: 'stale' }]));
+  workers[1].complete(report([{ matchId: 'first' }, { matchId: 'later' }], [oldSkip]));
+  assert.equal(messages.filter(m => m.type === 'complete').length, 1);
+  scanner.postMessage(scan(chosen));
+  workers[1].emit({ type: 'parser-crash', requestId: workers[1].messages.at(-1).requestId,
+    fileIndex: 1, completed: 1, matches: [{ matchId: 'first' }], skipped: [], message: 'memory access out of bounds' });
+  assert.deepEqual(workers[2].messages[0].files, chosen.slice(1));
+});
+
+test('a file that traps twice is skipped without losing completed or other-worker results', () => {
+  const { scanner, workers, messages } = fixture(3, 8);
+  scanner.postMessage(scan());
+  const data = workers[0].messages[0];
+  workers[0].emit({ type: 'parser-crash', requestId: data.requestId, fileIndex: 1,
+    completed: 1, matches: [{ matchId: 'kept' }], skipped: [], message: 'memory access out of bounds' });
+  workers[2].emit({ type: 'parser-crash', requestId: data.requestId, fileIndex: 0,
+    completed: 1, matches: [{ matchId: 'kept' }], skipped: [], message: 'memory access out of bounds' });
+  const resumed = workers[3].messages[0];
+  assert.deepEqual(resumed.files, []);
+  assert.equal(resumed.completed, 2);
+  assert.match(resumed.skipped[0].reason, /browser decoder failed twice/);
+  workers[1].complete(report([{ matchId: 'other-a' }, { matchId: 'other-b' }]));
+  workers[3].complete(report(resumed.matches, resumed.skipped));
+  const merge = workers[3].messages.at(-1);
+  assert.equal(merge.matches.length, 3);
+  assert.equal(merge.skipped.length, 1);
+  workers[3].complete(report(merge.matches, merge.skipped), merge.requestId);
+  assert.equal(messages.at(-1).report.matches.length, 3);
+});
+
+test('a final report memory trap retries the merge in a fresh parser', () => {
+  const { scanner, workers, messages } = fixture(3, 8);
+  scanner.postMessage(scan());
+  workers[0].complete(report([{ matchId: 'a' }]));
+  workers[1].complete(report([{ matchId: 'b' }]));
+  const merge = workers[0].messages.at(-1);
+  workers[0].emit({ type: 'error', requestId: merge.requestId, message: 'memory access out of bounds' });
+  assert.equal(workers[0].terminated, true);
+  assert.deepEqual(workers[2].messages[0], merge);
+  workers[2].complete(report(merge.matches, merge.skipped), merge.requestId);
+  assert.equal(messages.at(-1).type, 'complete');
+});
+
+test('planned heap recycling retains progress and does not consume the crash retry', () => {
+  const { scanner, workers } = fixture(2, 8);
+  scanner.postMessage(scan());
+  const requestId = workers[0].messages[0].requestId;
+  workers[0].emit({ type: 'parser-recycle', requestId, fileIndex: 2, completed: 2,
+    matches: [{ matchId: 'a' }, { matchId: 'b' }], skipped: [] });
+  const resumed = workers[1].messages[0];
+  assert.equal(resumed.completed, 2);
+  workers[1].emit({ type: 'parser-crash', requestId, fileIndex: 0, completed: 2,
+    matches: resumed.matches, skipped: [], message: 'memory access out of bounds' });
+  assert.equal(workers[2].messages[0].files.length, 2);
+  assert.deepEqual(workers[2].messages[0].skipped, []);
+});
+
 test('largest files are balanced by size and retain their aligned paths', () => {
   const { scanner, workers } = fixture(3, 8);
   const chosenFiles = files([10, 90, 20, 80]);
