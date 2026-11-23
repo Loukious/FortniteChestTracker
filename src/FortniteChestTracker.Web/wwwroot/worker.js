@@ -1,11 +1,13 @@
 import { dotnet } from './_framework/dotnet.js';
 import { createReplayCache, PARSER_CACHE_VERSION } from './replay-cache.js';
+import { createMatchHistory } from './match-history.js';
 
 const { readCachedResult, writeCachedResult } = createReplayCache({
     parserVersion: `${PARSER_CACHE_VERSION}:${Intl.DateTimeFormat().resolvedOptions().timeZone}`
 });
 
 let parser;
+const history = createMatchHistory({ parserVersion: PARSER_CACHE_VERSION });
 const ready = (async () => {
     const runtime = await dotnet.create();
     const config = runtime.getConfig();
@@ -60,7 +62,10 @@ self.addEventListener('message', async event => {
                     }
                     await writeCachedResult(contentHash, since, result, includeOtherModes);
                 }
-                if (result.match) matches.push(result.match);
+                if (result.match) {
+                    await history.saveMatch(result.match);
+                    matches.push(result.match);
+                }
                 if (result.skipped) skipped.push(result.skipped);
             } catch (error) {
                 if (isParserCrash(error)) {

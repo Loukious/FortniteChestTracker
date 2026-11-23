@@ -1,4 +1,6 @@
 import { ReplayScanner } from './scanner-pool.js';
+import { createMatchHistory, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup } from './match-history.js';
+import { PARSER_CACHE_VERSION } from './replay-cache.js';
 
 const byId = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
@@ -8,7 +10,7 @@ const ui = Object.fromEntries([
   'owner-total', 'teammate-total', 'squad-total', 'match-total', 'owners-summary', 'files-summary',
   'matches-body', 'matches-empty', 'selected-match-summary', 'selected-match-reward-summary', 'squad-body', 'players-body',
   'rewards-body', 'rewards-count', 'rewards-summary', 'rewards-coverage', 'rewards-empty',
-  'skipped-body', 'skipped-count', 'skipped-empty'
+  'skipped-body', 'skipped-count', 'skipped-empty', 'include-history', 'history-status', 'export-history', 'import-history', 'history-input', 'clear-history', 'matches-hint'
 ].map((id) => [id, byId(id)]));
 
 const state = {
@@ -17,6 +19,9 @@ const state = {
   scanIncludeOtherModes: false, reportIncludeOtherModes: false,
   savedFolder: null, savedFolderVersion: 0
 };
+const history = createMatchHistory({ parserVersion: PARSER_CACHE_VERSION });
+Object.assign(state, { historyMatches: [], currentReport: null, historyAvailable: false, historyLoading: true,
+  historyBusy: false, historySaving: false, reportFromHistory: false, historyTask: Promise.resolve() });
 const relativePaths = new WeakMap();
 const number = new Intl.NumberFormat();
 const dateTime = new Intl.DateTimeFormat(undefined, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -325,7 +330,7 @@ function updateSelection() {
   const selectedCount = state.eligible.reduce((count, file) => count + Number(state.selected.has(fileKey(file))), 0);
   ui['scan-selection-label'].textContent = `${number.format(selectedCount)} of ${number.format(state.eligible.length)} eligible replay files selected`;
   ui['select-all'].textContent = selectedCount === state.eligible.length && selectedCount > 0 ? 'Clear selection' : 'Select all eligible';
-  ui.scan.disabled = state.busy || state.choosing || selectedCount === 0 || dateThreshold() === null;
+  ui.scan.disabled = state.busy || state.choosing || state.historyBusy || selectedCount === 0 || dateThreshold() === null;
   ui['select-all'].disabled = state.busy || state.choosing || state.eligible.length === 0;
 }
 
@@ -335,10 +340,14 @@ function setBusy(busy) {
 }
 
 function refreshControls() {
-  const locked = state.busy || state.choosing;
+  const locked = state.busy || state.choosing || state.historyBusy;
   for (const id of ['choose-folder', 'choose-remember-folder', 'choose-files', 'use-saved-folder', 'since', 'include-other-modes']) ui[id].disabled = locked;
   ui.cancel.hidden = !state.busy;
   ui.export.disabled = locked || !state.report;
+  ui['include-history'].disabled = locked;
+  ui['import-history'].disabled = locked || state.historyLoading;
+  ui['export-history'].disabled = locked || state.historyLoading || !state.historyMatches.length;
+  ui['clear-history'].disabled = locked || state.historyLoading || !state.historyMatches.length;
   const eligibleKeys = new Set(state.eligible.map(fileKey));
   for (const checkbox of ui['files-body'].querySelectorAll('input[type=checkbox]')) {
     checkbox.disabled = locked || !eligibleKeys.has(checkbox.dataset.key);
@@ -371,12 +380,16 @@ function createWorker() {
         failScan('The replay reader returned an incomplete report. Try scanning again.');
         return;
       }
+      state.currentReport = message.report;
+      state.historyMatches = mergeSavedMatches(state.historyMatches, message.report.matches);
       state.report = message.report;
       state.reportSince = state.scanSince;
       state.reportIncludeOtherModes = state.scanIncludeOtherModes;
       ui.progress.hidden = true;
       setBusy(false);
-      populateReport();
+      if (ui['include-history'].checked) showHistoryReport(state.scanSince, state.scanIncludeOtherModes);
+      else { state.reportFromHistory = false; populateReport(); }
+      persistHistory(message.report);
       const seconds = Math.round((Date.now() - state.scanStartedAt) / 100) / 10;
       setStatus(`Scan complete in ${number.format(seconds)}s: ${number.format(state.report.matches.length)} matches included, ${number.format(state.report.skipped.length)} files skipped. Select a match for its squad breakdown.`);
     } else if (message.type === 'error') {
@@ -400,7 +413,7 @@ function failScan(message) {
 }
 
 function scan() {
-  if (state.busy || state.choosing || dateThreshold() === null) return;
+  if (state.busy || state.choosing || state.historyBusy || dateThreshold() === null) return;
   const files = state.eligible.filter((file) => state.selected.has(fileKey(file)));
   if (files.length === 0) return;
   state.scanSince = ui.since.value;
@@ -421,9 +434,9 @@ function scan() {
 }
 
 function populateReport() {
-  const previousOwner = ui['owner-filter'].value;
+  const previousOwner = ui['owner-filter'].value || state.preferredOwner || '';
   const owners = new Map();
-  for (const match of state.report.matches) {
+  for (const match of state.reportFromHistory ? state.historyMatches : state.report.matches) {
     const key = caseKey(match.ownerId);
     if (!owners.has(key)) owners.set(key, { id: key, name: match.ownerName || match.ownerId || 'Unnamed owner' });
   }
@@ -439,8 +452,8 @@ function populateReport() {
   }
   ui['owner-filter'].replaceChildren(...options);
   ui['owner-filter'].value = owners.has(previousOwner) ? previousOwner : owners.size === 1 ? owners.keys().next().value : '';
-  ui['report-summary'].textContent = `Last completed scan · matches since ${state.reportSince} · ${state.reportIncludeOtherModes ? 'other Battle Royale modes included' : 'regular Battle Royale / Zero Build only'}`;
-  ui['files-summary'].textContent = `${number.format(state.report.filesScanned)} files considered · ${number.format(state.report.skipped.length)} skipped`;
+  ui['report-summary'].textContent = `${state.reportFromHistory ? 'Saved match history' : 'Last completed scan'} · matches since ${state.reportSince} · ${state.reportIncludeOtherModes ? 'other Battle Royale modes included' : 'regular Battle Royale / Zero Build only'}`;
+  ui['files-summary'].textContent = `${state.reportFromHistory ? 'Saved matches included · ' : ''}${number.format(state.report.filesScanned)} files considered in the latest scan · ${number.format(state.report.skipped.length)} skipped`;
   ui['skipped-count'].textContent = `(${number.format(state.report.skipped.length)})`;
   const skippedRows = document.createDocumentFragment();
   for (const skip of state.report.skipped) {
@@ -460,14 +473,20 @@ function renderFilteredReport() {
   const matches = state.report.matches.filter((match) => !ownerId || caseKey(match.ownerId) === ownerId)
     .sort((a, b) => (Date.parse(b.matchDate) || 0) - (Date.parse(a.matchDate) || 0));
   state.visibleMatches = matches;
-  if (!matches.includes(state.selectedMatch)) state.selectedMatch = matches[0] ?? null;
+  if (!matches.slice(0, 500).includes(state.selectedMatch)) state.selectedMatch = matches[0] ?? null;
+  ui['matches-hint'].textContent = matches.length > 500 ? `Showing the latest 500 of ${number.format(matches.length)} matches. Totals and CSV include all matches.` : 'Select a match for its squad breakdown.';
   ui['owner-total'].textContent = summaryCount(matches, (player) => player.isOwner);
   ui['teammate-total'].textContent = summaryCount(matches, (player) => !player.isOwner, true);
   ui['squad-total'].textContent = summaryCount(matches, () => true, true);
   ui['match-total'].textContent = number.format(matches.length);
+  if (state.reportFromHistory) {
+    const currentKeys = new Set((state.currentReport?.matches ?? []).map(historyKey));
+    const remembered = matches.filter(match => !currentKeys.has(historyKey(match))).length;
+    ui['files-summary'].textContent = `${number.format(remembered)} saved matches outside the latest scan · ${number.format(state.report.filesScanned)} files considered · ${number.format(state.report.skipped.length)} skipped`;
+  }
   ui['owners-summary'].textContent = [...new Set(matches.map((match) => match.ownerName))].join(', ') || 'No included replay owners';
   const rows = document.createDocumentFragment();
-  matches.forEach((match, index) => {
+  matches.slice(0, 500).forEach((match, index) => {
     const counts = matchCounts(match);
     const row = document.createElement('tr');
     row.dataset.index = String(index);
@@ -619,6 +638,137 @@ function exportCsv() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function showHistoryReport(since = ui.since.value, otherModes = ui['include-other-modes'].checked === true) {
+  if (dateThreshold() === null) return;
+  const current = state.currentReport;
+  state.report = { matches: filterSavedMatches(state.historyMatches, since, otherModes),
+    skipped: current?.skipped ?? [], filesScanned: current?.filesScanned ?? 0 };
+  state.reportSince = since;
+  state.reportIncludeOtherModes = otherModes;
+  state.reportFromHistory = true;
+  populateReport();
+  refreshControls();
+}
+
+function saveViewPreferences() {
+  try {
+    window.localStorage?.setItem('fortnite-chest-tracker-history-view-v1', JSON.stringify({ since: ui.since.value,
+      includeOtherModes: ui['include-other-modes'].checked === true, includeHistory: ui['include-history'].checked === true,
+      ownerId: ui['owner-filter'].value || state.preferredOwner || '' }));
+  } catch { /* View preferences are optional when storage is blocked. */ }
+}
+
+function restoreViewPreferences() {
+  try {
+    const data = JSON.parse(window.localStorage?.getItem('fortnite-chest-tracker-history-view-v1') || 'null');
+    if (!data) return;
+    const defaultSince = ui.since.value;
+    if (typeof data.since === 'string') { ui.since.value = data.since; if (dateThreshold() === null) ui.since.value = defaultSince; }
+    if (typeof data.includeOtherModes === 'boolean') ui['include-other-modes'].checked = data.includeOtherModes;
+    if (typeof data.includeHistory === 'boolean') ui['include-history'].checked = data.includeHistory;
+    if (typeof data.ownerId === 'string') state.preferredOwner = caseKey(data.ownerId);
+  } catch { }
+}
+
+function updateHistoryInfo() {
+  ui['history-status'].textContent = state.historyLoading ? 'Loading saved match history…' : state.historySaving ? 'Saving match history…' :
+    state.historyAvailable ? `${number.format(state.historyMatches.length)} match records saved in this browser.` :
+      `${number.format(state.historyMatches.length)} match records retained for this visit. Browser storage is unavailable; export a backup to keep them.`;
+  refreshControls();
+}
+
+async function initializeHistory() {
+  try {
+    const imported = await history.importCachedMatches();
+    const loaded = await history.read();
+    state.historyMatches = mergeSavedMatches(loaded.matches, state.historyMatches);
+    state.historyAvailable = loaded.persistent;
+    if (state.historyMatches.length && ui['include-history'].checked && !state.busy && !state.historyBusy) {
+      showHistoryReport();
+      setStatus(imported ? `Recovered ${number.format(imported)} match records from this browser's replay cache. Choose replays to add more.` : 'Saved match history loaded. Choose replays to add more matches.');
+    }
+  } catch { state.historyAvailable = false; }
+  finally { state.historyLoading = false; updateHistoryInfo(); }
+}
+
+function persistHistory(report) {
+  state.historySaving = true;
+  updateHistoryInfo();
+  state.historyTask = (async () => {
+    await state.historyReady;
+    await history.saveMatches(report.matches);
+    const loaded = await history.read();
+    state.historyMatches = mergeSavedMatches(loaded.matches, state.historyMatches);
+    state.historyAvailable = loaded.persistent;
+    if (state.currentReport === report && ui['include-history'].checked && !state.busy && !state.historyBusy)
+      showHistoryReport(state.reportSince, state.reportIncludeOtherModes);
+  })().catch(() => { state.historyAvailable = false; }).finally(() => { state.historySaving = false; updateHistoryInfo(); });
+}
+
+async function exportHistory() {
+  if (state.busy || state.historyBusy) return;
+  await state.historyReady;
+  await state.historyTask;
+  const data = await history.backup();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `Fortnite-match-history-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click(); link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function importHistory() {
+  const file = ui['history-input'].files?.[0];
+  if (!file || state.busy || state.choosing || state.historyBusy) return;
+  state.historyBusy = true; refreshControls();
+  try {
+    const records = parseHistoryBackup(await file.text());
+    await state.historyReady; await state.historyTask;
+    for (const record of records) await history.saveRecord(record);
+    const loaded = await history.read();
+    state.historyMatches = mergeSavedMatches(loaded.matches, state.historyMatches);
+    state.historyAvailable = loaded.persistent;
+    if (ui['include-history'].checked) showHistoryReport();
+    setStatus(`History backup imported. ${number.format(state.historyMatches.length)} unique match/player records retained.`);
+  } catch (error) { setStatus(`Could not import history: ${error.message || error}. Existing history was preserved.`); }
+  finally { state.historyBusy = false; ui['history-input'].value = ''; updateHistoryInfo(); }
+}
+
+async function clearHistory() {
+  if (state.busy || state.choosing || state.historyBusy ||
+      !window.confirm('Clear all saved match history from this browser? Export a backup first if you want to restore it.')) return;
+  state.historyBusy = true; refreshControls();
+  try {
+    await state.historyReady; await state.historyTask;
+    await history.clear();
+    state.historyMatches = []; state.currentReport = null;
+    if (ui['include-history'].checked) showHistoryReport();
+    else { state.report = null; ui.report.hidden = true; }
+    setStatus('Saved history cleared. Scan replays or import a backup to start again.');
+  } finally { state.historyBusy = false; updateHistoryInfo(); }
+}
+
+ui['include-history'].addEventListener('change', () => {
+  if (state.busy || state.historyBusy) return;
+  if (ui['include-history'].checked) showHistoryReport();
+  else if (state.currentReport) {
+    state.report = state.currentReport; state.reportFromHistory = false;
+    state.reportSince = state.scanSince; state.reportIncludeOtherModes = state.scanIncludeOtherModes;
+    populateReport();
+  } else { state.report = null; ui.report.hidden = true; refreshControls(); }
+  saveViewPreferences();
+});
+ui['include-other-modes'].addEventListener('change', () => {
+  if (ui['include-history'].checked && !state.busy && !state.historyBusy && state.historyMatches.length) showHistoryReport();
+  saveViewPreferences();
+});
+ui['export-history'].addEventListener('click', exportHistory);
+ui['import-history'].addEventListener('click', () => ui['history-input'].click());
+ui['history-input'].addEventListener('change', importHistory);
+ui['clear-history'].addEventListener('click', clearHistory);
+
 ui['choose-folder'].addEventListener('click', chooseFolder);
 ui['choose-remember-folder'].addEventListener('click', chooseAndRememberFolder);
 ui['use-saved-folder'].addEventListener('click', useSavedFolder);
@@ -626,7 +776,13 @@ ui['copy-path'].addEventListener('click', copyFolderPath);
 ui['choose-files'].addEventListener('click', () => ui['files-input'].click());
 ui['folder-input'].addEventListener('change', () => acceptFiles(ui['folder-input'].files, true));
 ui['files-input'].addEventListener('change', () => acceptFiles(ui['files-input'].files, false));
-ui.since.addEventListener('change', () => { if (!state.busy) filterFiles(true); });
+ui.since.addEventListener('change', () => {
+  if (!state.busy) {
+    filterFiles(true);
+    if (ui['include-history'].checked && state.historyMatches.length) showHistoryReport();
+    saveViewPreferences();
+  }
+});
 ui['files-body'].addEventListener('change', (event) => {
   const checkbox = event.target;
   if (!(checkbox instanceof HTMLInputElement) || checkbox.type !== 'checkbox' || state.busy || state.choosing) return;
@@ -647,7 +803,11 @@ ui.cancel.addEventListener('click', () => {
   ui.progress.hidden = true;
   setStatus(state.report ? 'Scan cancelled. The previous completed report is still available.' : 'Scan cancelled. Your file selection is ready for another scan.');
 });
-ui['owner-filter'].addEventListener('change', () => { if (state.report) renderFilteredReport(); });
+ui['owner-filter'].addEventListener('change', () => {
+  state.preferredOwner = ui['owner-filter'].value;
+  if (state.report) renderFilteredReport();
+  saveViewPreferences();
+});
 ui['matches-body'].addEventListener('click', (event) => {
   const row = event.target.closest('tr[data-index]');
   if (!row) return;
@@ -677,3 +837,5 @@ for (const tab of document.querySelectorAll('[role=tab]')) {
 ui.export.addEventListener('click', exportCsv);
 window.addEventListener('beforeunload', () => destroyWorker());
 restoreSavedFolder();
+restoreViewPreferences();
+state.historyReady = initializeHistory();

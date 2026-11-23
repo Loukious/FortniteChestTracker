@@ -30,6 +30,7 @@ public sealed record ChestMatch(
 {
     public string FileName => Path.GetFileName(FilePath);
     public uint RecordingLengthInMs { get; init; }
+    public bool? IsStandardMode { get; init; }
     public IReadOnlyList<ChestReward> Rewards { get; init; } = [];
     public string RewardCoverage { get; init; } = ChestRewardCoverage.RecordedOnly;
     public int? OwnerChests => Players.Single(p => p.IsOwner).Chests;

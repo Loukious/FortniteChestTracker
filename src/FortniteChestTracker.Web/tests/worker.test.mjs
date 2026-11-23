@@ -54,7 +54,7 @@ function replay(name, content = 'same replay bytes') {
 
 async function fixture({ parse = (_bytes, path, _since, hash) => match(path, hash),
   build, cache, storage = new Storage() } = {}) {
-  const messages = [], parseCalls = [], buildCalls = [], handlers = new Map();
+  const messages = [], parseCalls = [], buildCalls = [], historyCalls = [], handlers = new Map();
   let actualCache;
   const parser = {
     ScanReplay(bytes, filePath, since, contentHash, includeOtherModes) {
@@ -68,6 +68,7 @@ async function fixture({ parse = (_bytes, path, _since, hash) => match(path, has
     }
   };
   const context = vm.createContext({ Uint8Array, crypto: webcrypto, Intl, PARSER_CACHE_VERSION,
+    createMatchHistory: () => ({ async saveMatch(match) { historyCalls.push(structuredClone(match)); return true; } }),
     createReplayCache(options) {
       actualCache = cache ?? createReplayCache({ ...options, indexedDB: storage });
       return actualCache;
@@ -79,7 +80,7 @@ async function fixture({ parse = (_bytes, path, _since, hash) => match(path, has
   });
   vm.runInContext(workerSource, context);
   await vm.runInContext('ready', context);
-  return { messages, parseCalls, buildCalls, cache: actualCache,
+  return { messages, parseCalls, buildCalls, historyCalls, cache: actualCache,
     async send(data) { await handlers.get('message')({ data }); return messages.at(-1); },
     scan(files, filePaths = files.map(file => file.name), requestId = 1, since = '2026-11-01', skipped = [], includeOtherModes = false) {
       return this.send({ type: 'scan', files, filePaths, requestId, since, skipped, includeOtherModes, totalFiles: files.length + skipped.length });
@@ -102,6 +103,9 @@ test('cached content avoids reparsing and rewrites copied paths without mutating
   assert.equal(worker.parseCalls.length, 1);
   assert.equal(worker.messages.at(-1).report.matches[0].filePath, 'Demos/original.replay');
   assert.equal(first.reads, 2); // Contents are hashed again before trusting the cached report.
+  assert.equal(worker.historyCalls.length, 3);
+  assert.equal(worker.historyCalls[0].matchId, worker.historyCalls[1].matchId);
+  assert.equal(worker.historyCalls[0].ownerId, worker.historyCalls[1].ownerId);
 });
 
 test('overwritten content and a different date cutoff cannot reuse stale parser results', async () => {

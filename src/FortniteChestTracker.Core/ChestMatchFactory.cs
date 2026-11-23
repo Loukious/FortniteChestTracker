@@ -85,7 +85,9 @@ internal static class ChestMatchFactory
             rewardCoverage += " Some reward recipients could not be identified.";
         return new ChestMatch(path, matchId, players.Single(player => player.IsOwner).Name,
             owner.PlayerId!, mode, analysis.Replay.GameData.CurrentPlaylist, matchDate, players, coverage)
-            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, Rewards = orderedRewards, RewardCoverage = rewardCoverage };
+            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, Rewards = orderedRewards, RewardCoverage = rewardCoverage,
+                IsStandardMode = ChestEligibility.GetMode(analysis.Replay.GameData.CurrentPlaylist,
+                    analysis.Replay.GameData.IsTournamentRound, analysis.Replay.GameData.IsLargeTeamGame == true) is not null };
     }
 
     private static bool SameRecipientNearTime(ReplayTreasureGrant grant, ChestReward reward) =>

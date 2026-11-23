@@ -7,6 +7,17 @@ rewards in regular Fortnite Battle Royale and Zero Build matches. Choose your re
 scan the files you need. Replays are processed locally in your browser and are
 never uploaded.
 
+Saved match history is enabled by default. Results are retained by match ID and
+the replay owner's player ID, so rotating or deleting replay files does not
+remove previously scanned counts. Rescans update the same record instead of
+adding it again. Existing supported browser-cache results are recovered on the
+first visit after this update.
+
+Use **Export history backup** and **Import history backup** to move or restore
+the history. Date, mode, and owner filters still apply. History is stored in this
+browser; export a backup before clearing site data. **Clear saved history** asks
+for confirmation and leaves the replay files untouched.
+
 Check **Include other Battle Royale modes** before scanning to include Respawn
 Rumble, Reload, OG, ranked, and other Battle Royale playlists. The option is off
 by default. Results and CSV exports include recorded chest counts and treasure

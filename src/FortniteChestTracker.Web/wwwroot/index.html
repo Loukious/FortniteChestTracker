@@ -38,6 +38,17 @@
         <label><input type="checkbox" id="include-other-modes" aria-describedby="mode-option-hint"> Include other Battle Royale modes</label>
         <p class="hint" id="mode-option-hint">Include Respawn Rumble, Reload, OG, ranked, and other Battle Royale playlists. Leave unchecked for regular Battle Royale and Zero Build only.</p>
       </div>
+      <div class="history-controls">
+        <label class="history-toggle"><input type="checkbox" id="include-history" checked> Include saved match history</label>
+        <p class="hint">Scanned matches stay in this browser even after their replay files rotate out. Match ID and replay owner player ID prevent duplicate counts. Date, mode, and owner filters still apply.</p>
+        <p class="hint" id="history-status" role="status">Loading saved match history…</p>
+        <div class="folder-actions">
+          <button type="button" id="export-history" disabled>Export history backup</button>
+          <button type="button" id="import-history">Import history backup</button>
+          <button type="button" id="clear-history" disabled>Clear saved history</button>
+          <input type="file" id="history-input" accept=".json,application/json" hidden aria-label="Import match history backup">
+        </div>
+      </div>
       <div class="folder-location">
         <div><p class="path-label">Fortnite's usual Windows replay folder</p><code id="default-folder-path">%LOCALAPPDATA%\FortniteGame\Saved\Demos</code><p class="hint">Paste this into the folder picker address bar.</p></div>
         <button type="button" id="copy-path">Copy folder path</button>
@@ -81,7 +92,7 @@
       <p class="coverage-note"><strong>Opened</strong> includes normal openings and destroyed unopened chests attributed to players in the replay. A chest that resets and is opened or destroyed again counts again; repeated updates within the same opening count once. Counts are the minimum confirmed by the recording. <strong>+</strong> means more chests may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
       <p class="coverage-note">Reward counts include recorded observations in each replay. Nearby players outside your squad appear as <strong>Other player</strong> in Rewards when their reward is recorded. <strong>None recorded</strong> does not mean no reward was received. Treasure receipts without a prize ID appear as <strong>Treasure (unknown type)</strong>; they may include Gizmos or shared teammate rewards.</p>
       <section class="panel matches-panel" aria-labelledby="matches-heading">
-        <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted">Select a match for its squad breakdown.</p></div>
+        <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted" id="matches-hint">Select a match for its squad breakdown.</p></div>
         <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">
           <table class="matches-table"><thead><tr><th>Match date</th><th>Mode</th><th>Replay owner</th><th class="number">Owner · Opened</th><th class="number">Teammates · Opened</th><th class="number">Squad · Opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Replay file</th></tr></thead><tbody id="matches-body"></tbody></table>
         </div>

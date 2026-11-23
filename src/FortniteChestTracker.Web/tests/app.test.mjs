@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const source = readFileSync(new URL('../wwwroot/app.js', import.meta.url), 'utf8').replace(/^import .*scanner-pool\.js';\r?\n/m, '');
+const source = readFileSync(new URL('../wwwroot/app.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '');
+const historySource = readFileSync(new URL('../wwwroot/match-history.js', import.meta.url), 'utf8');
+const { createMatchHistory: makeHistory, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup } =
+  await import(`data:text/javascript;base64,${Buffer.from(historySource).toString('base64')}`);
 
 class Element {
   constructor(tag = 'div') {
@@ -39,7 +42,7 @@ class Element {
   }
 }
 
-function loadApp(windowOptions = {}) {
+function loadApp(windowOptions = {}, historySeed = []) {
   const elements = new Map();
   const getElement = (id) => {
     if (!elements.has(id)) elements.set(id, new Element());
@@ -67,6 +70,13 @@ function loadApp(windowOptions = {}) {
     createDocumentFragment: () => new Element('fragment')
   };
   const context = vm.createContext({ document, window: { addEventListener() {}, ...windowOptions }, ReplayScanner: Worker,
+    createMatchHistory: () => {
+      const history = makeHistory({ indexedDB: null, readCachedRecords: async () => [] });
+      const seeded = Promise.all(historySeed.map(match => history.saveMatch(match)));
+      const read = history.read;
+      history.read = async () => { await seeded; return read(); };
+      return history;
+    }, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup, PARSER_CACHE_VERSION: 'test-parser',
     HTMLInputElement: Element, Date, Intl, console, Set, Map, WeakMap });
   vm.runInContext(source, context);
   return { elements, workers, run: code => vm.runInContext(code, context),
@@ -186,6 +196,63 @@ test('a failed scan visibly identifies the retained report as the previous resul
   assert.match(app.elements.get('report-summary').textContent, /Previous completed scan · latest scan failed/);
   assert.match(app.elements.get('status').textContent, /previous completed report is still available/);
   assert.equal(app.elements.get('scan').disabled, false);
+});
+
+test('saved results load without replays or starting a parser', async () => {
+  const app = loadApp({}, [match()]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  assert.equal(app.workers.length, 0);
+  assert.equal(app.elements.get('match-total').textContent, '1');
+  assert.match(app.elements.get('report-summary').textContent, /Saved match history/);
+});
+
+test('rotation and repeated scans retain prior matches without accumulating copies', async () => {
+  const first = match({ matchDate: '2026-11-02T12:00:00' });
+  const app = loadApp({}, [first]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  app.set('chosenFiles', [replay('new.replay', Date.now())]);
+  const current = match({ matchId: 'match-b', matchDate: '2026-11-20T12:00:00' });
+  app.run('acceptFiles(chosenFiles, false); scan();');
+  app.workers[0].emit({ type: 'complete', report: { matches: [current], skipped: [], filesScanned: 1 } });
+  await app.run('state.historyTask');
+  assert.equal(app.elements.get('match-total').textContent, '2');
+  app.run('scan();');
+  app.workers[0].emit({ type: 'complete', report: { matches: [current], skipped: [], filesScanned: 1 } });
+  await app.run('state.historyTask');
+  assert.equal(app.elements.get('match-total').textContent, '2');
+  app.elements.get('include-history').checked = false;
+  app.elements.get('include-history').listeners.get('change')();
+  assert.equal(app.elements.get('match-total').textContent, '1');
+  app.elements.get('include-history').checked = true;
+  app.elements.get('include-history').listeners.get('change')();
+  assert.equal(app.elements.get('match-total').textContent, '2');
+  app.elements.get('since').value = '2026-11-15';
+  app.elements.get('since').listeners.get('change')();
+  assert.equal(app.elements.get('match-total').textContent, '1');
+  assert.equal(app.run('state.historyMatches.length'), 2);
+});
+
+test('clearing history waits for pending saves and removes the saved counter', async () => {
+  const app = loadApp({ confirm: () => true }, [match()]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  await app.elements.get('clear-history').click();
+  assert.equal(app.elements.get('match-total').textContent, '0');
+  assert.equal(app.run('state.historyMatches.length'), 0);
+});
+
+test('saved player and mode preferences restore the same history view', async () => {
+  const values = new Map([['fortnite-chest-tracker-history-view-v1', JSON.stringify({ since: '2026-11-01',
+    includeOtherModes: true, includeHistory: true, ownerId: 'owner-a' })]]);
+  const localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
+  const app = loadApp({ localStorage }, [match({ playlist: 'Playlist_Respawn_Alt_MiniMobile', isStandardMode: false })]);
+  await app.run('state.historyReady');
+  assert.equal(app.elements.get('include-other-modes').checked, true);
+  assert.equal(app.elements.get('include-history').checked, true);
+  assert.equal(app.elements.get('owner-filter').value, 'owner-a');
+  assert.equal(app.elements.get('match-total').textContent, '1');
 });
 
 test('unknown file timestamps defer to the replay date instead of claiming the file is old', () => {

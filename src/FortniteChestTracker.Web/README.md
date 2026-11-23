@@ -6,6 +6,29 @@ Royale and Zero Build matches, with recorded treasure rewards, owner filtering,
 and CSV download. Release
 builds compile the parser ahead of time to improve replay parsing speed.
 
+## Saved match history
+
+**Include saved match history** is enabled by default. Completed results are stored
+in IndexedDB using match ID plus the replay owner's player ID, retaining squad
+counts and rewards without replay bytes. Copies and rescans update one result;
+an unreadable or shorter recording does not replace a better stored result.
+History loads without selecting replay files and survives replay rotation and
+parser updates. Date, mode, and owner filters hide results without deleting them.
+
+On the first visit after this update, supported results already in the browser's
+replay cache are imported into history. Matches never scanned or cached cannot
+be recovered after their files disappear. View preferences use local storage.
+
+**Export history backup** downloads a JSON backup. **Import history backup** merges
+it by the same IDs, so importing twice does not add counts twice. History is local
+to this browser; use a backup when moving browsers or clearing site data.
+**Clear saved history** requires confirmation and prevents old parse-cache entries
+from automatically restoring the cleared total. If browser storage is blocked,
+results remain available for the visit and can still be exported.
+
+The match table displays at most the latest 500 matches; totals and CSV exports
+include the full filtered history.
+
 ## Choose your replays
 
 Select **Choose replay folder** on your first visit. Fortnite's usual Windows replay
