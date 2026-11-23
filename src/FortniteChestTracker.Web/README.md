@@ -252,6 +252,36 @@ voluntary quitting; disconnects may follow elimination or network loss, and dist
 events may be absent. Unknown regions cannot be ranked. Older aggregate history
 can still support teammate chest contribution when its region/counts are known.
 
+## Optional usage analytics
+
+The production site uses GA4 measurement ID `G-ZM2VXKTLBC`, a public identifier
+configured in `wwwroot/usage-config.js`. No API secret is embedded. Analytics
+load only after an explicit opt-in on the production HTTPS origin/path. GPC and
+Do Not Track override saved consent. Preview sites and forks do not load Google.
+The footer's **Analytics preferences** button allows withdrawal at any time,
+including across open tabs. Consent and a separate random usage ID are saved for
+90 days; blocked storage makes consent last only for the current page.
+
+Only a canonical page visit and named scan, export, import and file/folder picker
+button actions are sent. Events carry no replay filename, player or match ID,
+chest count, report content, URL query/fragment, or incoming referrer. Google still
+receives normal network/browser/device information and may generate its standard
+session and engagement events. Enhanced measurement is disabled in the web stream
+to avoid automatic search, form, outbound-link and download metadata collection.
+Button events describe an action requested, not proof that a scan/export succeeds.
+
+Google's genuine `gtag.js` executes in an empty iframe with `sandbox="allow-scripts"`
+and an opaque origin. It cannot read the parent DOM, replay files, localStorage,
+IndexedDB or native cookies. A validated postMessage channel passes only the
+public configuration, random usage ID and allowlisted event names. The frame has
+its own restricted CSP and no referrer. All Google storage/advertising consent is
+denied; Google signals and ad personalization are disabled. An inert empty cookie
+interface prevents gtag bootstrap cookie reads from throwing in the sandbox; it
+never stores or accesses real cookies. Global gtag defaults are set before loading
+the library to cover remotely configured initialization. Google library changes
+can affect this isolated integration; verify with the genuine SDK when updating
+it. Load failures/timeouts leave replay processing usable and analytics off.
+
 ## Deploy to GitHub Pages
 
 In the destination repository's **Settings → Pages**, set **Source** to **GitHub

@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%236988ff'/%3E%3Cpath d='M9 17h22v14H9zm2-7h18l2 5H9z' fill='%23fff'/%3E%3Cpath d='M18 17h4v7h-4z' fill='%236988ff'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./app.css">
   <script type="module" src="./app.js"></script>
+  <script type="module" src="./usage-analytics.js"></script>
 </head>
 <body>
   <main class="app-shell">
@@ -185,7 +186,8 @@
         </div>
       </section>
     </section>
-    <footer class="page-footer">Replay files are processed locally. Counts help estimate Shop Token progress; Fortnite awards the actual quest credit. <a href="https://github.com/Loukious/FortniteChestTracker">Source code</a> · <a href="./licenses.html">Licenses</a></footer>
+    <section id="usage-privacy" class="usage-privacy" aria-label="Usage analytics preferences" hidden><h2>Optional usage analytics</h2><p>Allow Google Analytics to measure page visits and basic feature use? Google receives browser/device information and a random analytics ID. Replay files, player IDs, match IDs, chest counts, and report contents are excluded.</p><p class="hint" id="usage-status" role="status"></p><p class="hint">Your choice is saved for 90 days. <a href="https://policies.google.com/privacy" target="_blank" rel="noopener noreferrer">Google privacy policy</a></p><div class="folder-actions"><button type="button" id="usage-allow">Allow usage analytics</button><button type="button" id="usage-decline">Keep analytics off</button></div></section>
+    <footer class="page-footer">Replay files are processed locally. Counts help estimate Shop Token progress; Fortnite awards the actual quest credit. <a href="https://github.com/Loukious/FortniteChestTracker">Source code</a> · <a href="./licenses.html">Licenses</a> · <button type="button" class="text-button" id="usage-preferences">Analytics preferences</button></footer>
   </main>
 </body>
 </html>

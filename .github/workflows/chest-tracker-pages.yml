@@ -70,6 +70,10 @@ jobs:
           test -f artifacts/FortniteChestTracker.Web/wwwroot/analytics.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/analytics-ui.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/treasure-hour.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/usage-config.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/usage-analytics.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/usage-analytics-frame.html
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/usage-analytics-frame.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/_framework/dotnet.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/GPL-3.0.txt
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/DOTNET-MIT.txt
