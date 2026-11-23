@@ -211,6 +211,37 @@ comparisons keep the same owner and playlist across all reported regions in the
 selected date period. Rescanning adds regions to older saved matches without
 duplicating counts.
 
+Farming insights compare the selected match's player and playlist, even when the
+pace graph is set to average all modes. Region rankings compare all reported
+regions; restart and time-of-day notes follow the region filter. Date filters and
+Owner/Teammates/Squad scope apply. Estimated chest rates include the entered
+queue/loading delay once per match. Time slots group entire recordings by their
+local match start time in three-hour blocks; they are associations, not proof that
+the clock time or region causes better loot.
+
+Region/time recommendations require two groups with at least five usable matches
+on two days each. Near ties within 10% show little observed difference. Restart
+notes require timestamped matches on two days, five matches and at least 20% of
+the timed cohort reaching each considered cutoff. They choose an early cutoff
+within 2% of the observed peak; a restart suggestion requires at least a 5%
+estimated gain over full recordings. Missing counts, missing durations, unreadable
+recordings, and unavailable team membership are excluded from advice. Legacy
+aggregate history can inform region/time comparisons but needs opening timestamps
+for restart advice. Small supported samples are labelled early findings.
+
+Teammate notes independently rank teammate chest contribution and recorded early
+disconnects for the same player/playlist across known regions. Disconnects use
+explicit `bIsDisconnected` updates with replay times, deduplicate repeated flags,
+and allow a separate event after reconnection. Squad details show recorded times.
+The early cutoff defaults to five replay minutes and is adjustable. Comparisons
+require recording through that cutoff plus one minute, adequate samples on two
+days, and the new disconnect monitoring data. Short, legacy, untimed, or unsupported
+records are unavailable rather than proof of staying. End-of-replay exits are not
+counted as early. Rates describe detected events, not the true probability of
+voluntary quitting; disconnects may follow elimination or network loss, and distant
+events may be absent. Unknown regions cannot be ranked. Older aggregate history
+can still support teammate chest contribution when its region/counts are known.
+
 ## Deploy to GitHub Pages
 
 In the destination repository's **Settings → Pages**, set **Source** to **GitHub

@@ -87,6 +87,20 @@ test('region enrichment retains identity and survives an older timeline backup',
   assert.equal((await current.read()).matches.length, 1);
   assert.equal((await current.read()).matches[0].matchmakingRegion, 'EU');
 });
+test('new disconnect tracking enriches saved matches and survives older backups', async () => {
+  const storage = new Storage();
+  const old = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v2-region' });
+  await old.saveMatch(match({ matchmakingRegion: 'EU' }));
+  const backup = await old.backup();
+  const current = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v3-teammates' });
+  const disconnects = [{ playerId: 'player-a', replayTimeSeconds: 120 }];
+  await current.saveMatch(match({ matchmakingRegion: 'EU', disconnectMonitoringAvailable: true, playerDisconnects: disconnects }));
+  await current.saveRecord(backup.records[0]);
+  const restored = (await createMatchHistory({ indexedDB: storage }).read()).matches;
+  assert.equal(restored.length, 1);
+  assert.deepEqual(restored[0].playerDisconnects, disconnects);
+  assert.equal(restored[0].disconnectMonitoringAvailable, true);
+});
 
 test('match and player IDs preserve one result across copies, names, and visits', async () => {
   const storage = new Storage();

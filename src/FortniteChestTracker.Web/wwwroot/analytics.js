@@ -112,6 +112,126 @@ export function sameComparisonGroup(a, b) {
   return id(a.ownerId) === id(b.ownerId) && id(a.playlist) === id(b.playlist);
 }
 
+// Descriptive farming notes use a fixed player/playlist cohort. The thresholds
+// prevent a single lucky match or session from producing a recommendation;
+// they are sample requirements, not a statistical confidence claim.
+export const INSIGHT_MIN_MATCHES = 5;
+export const INSIGHT_MIN_DAYS = 2;
+
+function farmingSamples(matches, scope) {
+  return matches.flatMap(match => {
+    const count = recordedCount(match, scope), seconds = recordingSeconds(match);
+    const players = (match.players ?? []).filter(p => inScope(p, scope));
+    const date = calendarKey(match.matchDate);
+    if (!date || !seconds || !count.available || players.some(p => !finiteCount(p.chests)) ||
+      scope !== 'owner' && hasUnknownTeam(match) || /unreadable/i.test(match.coverage ?? '')) return [];
+    return [{ match, count: count.count, minutes: seconds / 60, date }];
+  });
+}
+
+function farmingGroups(samples, keyFor, labelFor, downtime) {
+  const groups = new Map();
+  for (const sample of samples) {
+    const key = keyFor(sample.match);
+    if (!groups.has(key)) groups.set(key, { key, label: labelFor(key), count: 0, minutes: 0, matches: 0, days: new Set() });
+    const group = groups.get(key);
+    group.count += sample.count; group.minutes += sample.minutes; group.matches++; group.days.add(sample.date);
+  }
+  return [...groups.values()].map(g => ({ ...g, days: g.days.size,
+    rate: g.count / (g.minutes + downtime * g.matches),
+    eligible: g.matches >= INSIGHT_MIN_MATCHES && g.days.size >= INSIGHT_MIN_DAYS }));
+}
+
+function rankFarmingGroups(groups) {
+  const eligible = groups.filter(g => g.eligible).sort((a, b) => b.rate - a.rate || a.key.localeCompare(b.key));
+  const [best, runnerUp] = eligible;
+  return { groups, best, runnerUp, eligibleGroups: eligible.length,
+    kind: !best ? 'insufficient' : best.count === 0 ? 'no-openings' : !runnerUp ? 'single'
+      : best.rate <= runnerUp.rate * 1.1 ? 'close' : 'leader' };
+}
+
+export function timeOfDayTotals(matches, scope = 'owner', downtimeMinutes = 3) {
+  const downtime = Math.min(60, Math.max(0, Number(downtimeMinutes) || 0));
+  const label = key => `${String(key).padStart(2, '0')}:00–${String(Number(key) + 3).padStart(2, '0')}:00`;
+  // Assign the whole recording to its local match-start block. Do not pretend
+  // match metadata establishes an exact wall-clock origin for each replay event.
+  return farmingGroups(farmingSamples(matches, scope), match => String(Math.floor(new Date(match.matchDate).getHours() / 3) * 3), label, downtime)
+    .sort((a, b) => Number(a.key) - Number(b.key));
+}
+
+export function teammateRegionInsights(matches, { earlyMinutes = 5, downtimeMinutes = 3 } = {}) {
+  const cutoff = Math.min(30, Math.max(2, Number(earlyMinutes) || 5));
+  const downtime = Math.min(60, Math.max(0, Number(downtimeMinutes) || 0));
+  const chestSamples = farmingSamples(matches, 'teammates').filter(s => (s.match.players ?? []).some(p => !p.isOwner));
+  const contribution = rankFarmingGroups(farmingGroups(chestSamples.filter(s => regionKey(s.match) !== 'unknown'), regionKey, regionName, downtime));
+  const groups = new Map();
+  let unavailable = 0;
+  for (const match of matches) {
+    const region = regionKey(match), seconds = recordingSeconds(match), day = calendarKey(match.matchDate);
+    const teammates = (match.players ?? []).filter(p => !p.isOwner);
+    if (!day || region === 'unknown' || !teammates.length || teammates.some(p => !p.playerId || String(p.playerId).startsWith('unknown:')) || hasUnknownTeam(match) || /unreadable/i.test(match.coverage ?? '')) continue;
+    if (!groups.has(region)) groups.set(region, { key: region, label: regionName(region), matches: 0, disconnectMatches: 0, days: new Set(), unavailable: 0 });
+    const group = groups.get(region), ids = new Set(teammates.map(p => id(p.playerId)));
+    const observations = Array.isArray(match.playerDisconnects) ? match.playerDisconnects.filter(d => d && ids.has(id(d.playerId))) : [];
+    // Count detected events, never infer staying from a lack of events. Require
+    // a full cutoff plus one minute of continued recording to avoid normal exits
+    // near the replay end. Unknown event timing cannot become a negative result.
+    if (!seconds || seconds < (cutoff + 1) * 60 || match.disconnectMonitoringAvailable !== true ||
+      !Array.isArray(match.playerDisconnects) || observations.some(d => !Number.isFinite(d.replayTimeSeconds) || d.replayTimeSeconds < 0 || d.replayTimeSeconds > seconds)) {
+      group.unavailable++; unavailable++; continue;
+    }
+    group.matches++; group.days.add(day);
+    if (observations.some(d => d.replayTimeSeconds < cutoff * 60)) group.disconnectMatches++;
+  }
+  const stabilityGroups = [...groups.values()].map(g => ({ ...g, days: g.days.size,
+    rate: g.matches ? g.disconnectMatches / g.matches : null,
+    eligible: g.matches >= INSIGHT_MIN_MATCHES && g.days.size >= INSIGHT_MIN_DAYS }));
+  const eligible = stabilityGroups.filter(g => g.eligible).sort((a, b) => a.rate - b.rate || a.key.localeCompare(b.key));
+  const [best, runnerUp] = eligible;
+  const stability = { groups: stabilityGroups, best, runnerUp, unavailable,
+    kind: !best ? 'insufficient' : !runnerUp ? 'single' : runnerUp.rate - best.rate < .1 ? 'close' : 'leader' };
+  return { contribution, stability, cutoff, downtime };
+}
+
+export function farmingInsights(matches, scope = 'owner', { downtimeMinutes = 3, windowMinutes = 2, region = '', earlyMinutes = 5 } = {}) {
+  const downtime = Math.min(60, Math.max(0, Number(downtimeMinutes) || 0));
+  const samples = farmingSamples(matches, scope);
+  const regions = rankFarmingGroups(farmingGroups(samples.filter(s => regionKey(s.match) !== 'unknown'), regionKey, regionName, downtime));
+  regions.unknownMatches = samples.filter(s => regionKey(s.match) === 'unknown').length;
+  regions.legacyMatches = samples.filter(s => !Object.hasOwn(s.match, 'matchmakingRegionCoverage')).length;
+  const localSamples = samples.filter(s => !region || regionKey(s.match) === region);
+  const time = rankFarmingGroups(timeOfDayTotals(localSamples.map(s => s.match), scope, downtime));
+  const recordings = localSamples.map(s => timedRecording(s.match, scope)).filter(Boolean);
+  const days = new Set(localSamples.filter(s => timedRecording(s.match, scope)).map(s => s.date)).size;
+  const duration = { kind: 'insufficient', matches: recordings.length, days, excluded: localSamples.length - recordings.length,
+    best: null, fullRate: null, improvement: null, downtime };
+  if (recordings.length >= INSIGHT_MIN_MATCHES && days >= INSIGHT_MIN_DAYS) {
+    const width = [1, 2, 5].includes(Number(windowMinutes)) ? Number(windowMinutes) : 2;
+    const fullMinutes = recordings.reduce((sum, r) => sum + r.seconds / 60 + downtime, 0);
+    duration.fullRate = recordings.reduce((sum, r) => sum + r.times.length, 0) / fullMinutes;
+    const longest = Math.max(...recordings.map(r => r.seconds)) / 60;
+    const candidates = [];
+    for (let minute = width; minute < longest; minute += width) {
+      if (minute < 2) continue;
+      const reach = recordings.filter(r => r.seconds >= minute * 60).length;
+      if (reach < INSIGHT_MIN_MATCHES || reach < recordings.length * .2) continue;
+      const minutes = recordings.reduce((sum, r) => sum + Math.min(minute, r.seconds / 60) + downtime, 0);
+      const count = recordings.reduce((sum, r) => sum + r.times.filter(t => t < minute * 60 || t === r.seconds && minute * 60 >= r.seconds).length, 0);
+      candidates.push({ minute, rate: count / minutes, matches: reach });
+    }
+    const peak = Math.max(0, ...candidates.map(p => p.rate));
+    // Prefer the earliest supported cutoff within 2% of the observed peak.
+    const nearPeak = peak >= duration.fullRate * 1.05 ? Math.max(peak * .98, duration.fullRate * 1.05) : peak * .98;
+    duration.best = candidates.find(p => peak > 0 && p.rate >= nearPeak) ?? null;
+    duration.improvement = duration.fullRate > 0 && duration.best ? duration.best.rate / duration.fullRate - 1 : null;
+    duration.kind = duration.fullRate === 0 ? 'no-openings' : !duration.best ? 'insufficient'
+      : duration.improvement >= .05 ? 'restart' : 'continue';
+  }
+  return { scope, samples: samples.length, excluded: matches.length - samples.length, region: regions, time, duration,
+    teammates: teammateRegionInsights(matches, { earlyMinutes, downtimeMinutes: downtime }),
+    selectedRegion: region, downtime, minMatches: INSIGHT_MIN_MATCHES, minDays: INSIGHT_MIN_DAYS };
+}
+
 export function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }

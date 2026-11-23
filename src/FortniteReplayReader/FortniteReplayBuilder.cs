@@ -244,7 +244,7 @@ public class FortniteReplayBuilder
         playerData.TeamKills = state.TeamKillScore ?? playerData.TeamKills;
         playerData.Kills = state.KillScore ?? playerData.Kills;
         playerData.HasThankedBusDriver ??= state.bThankedBusDriver;
-        playerData.Disconnected ??= state.bIsDisconnected;
+        playerData.Disconnected = state.bIsDisconnected ?? playerData.Disconnected;
 
         playerData.DeathCause ??= state.DeathCause;
         playerData.DeathLocation ??= state.DeathLocation;

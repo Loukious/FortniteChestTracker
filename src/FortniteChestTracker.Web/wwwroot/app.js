@@ -533,7 +533,11 @@ function renderSquad() {
     const row = document.createElement('tr');
     const rewards = cell(recordedRewardCount(playerRewardCount([match], player.playerId)), 'number');
     rewards.title = rewardCoverage(match);
-    row.append(cell(player.name), cell(player.isOwner ? 'Replay owner' : 'Teammate'), cell(formatCount(player.chests, player.coverage), 'number'), rewards, cell(player.coverage), cell(player.playerId));
+    const disconnects = (Array.isArray(match.playerDisconnects) ? match.playerDisconnects : []).filter(d => d && caseKey(d.playerId) === caseKey(player.playerId));
+    const disconnectTime = disconnects.length ? formatReplayTime(disconnects[0].replayTimeSeconds) : '';
+    const disconnect = match.disconnectMonitoringAvailable == null ? 'Not tracked · rescan' : match.disconnectMonitoringAvailable !== true || !Array.isArray(match.playerDisconnects) ? 'Unavailable' :
+      disconnects.length ? disconnectTime === 'Time unavailable' ? 'Recorded · time unavailable' : `First recorded ${disconnectTime}` : 'None recorded';
+    row.append(cell(player.name), cell(player.isOwner ? 'Replay owner' : 'Teammate'), cell(formatCount(player.chests, player.coverage), 'number'), rewards, cell(player.coverage), cell(player.playerId), cell(disconnect));
     rows.append(row);
   }
   ui['squad-body'].replaceChildren(rows);

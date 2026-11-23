@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const moduleAt = async path => import(`data:text/javascript;base64,${Buffer.from(readFileSync(new URL(path, import.meta.url), 'utf8')).toString('base64')}`);
-const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, regionKey, regionTotals, sameComparisonGroup, barChart } = await moduleAt('../wwwroot/analytics.js');
+const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, regionKey, regionTotals, sameComparisonGroup, farmingInsights, timeOfDayTotals, teammateRegionInsights, barChart } = await moduleAt('../wwwroot/analytics.js');
 const { treasureStatus, countdown } = await moduleAt('../wwwroot/treasure-hour.js');
 function match(times = [], seconds = 300, changes = {}) {
   return { ownerId: 'owner', playlist: 'BR', matchDate: '2026-11-23T12:00:00', recordingLengthInMs: seconds * 1000,
@@ -90,6 +90,126 @@ test('SVG escapes imported labels and exposes chart data for keyboard and assist
   assert.ok(svg.includes('tabindex="0"'));
   assert.ok(svg.includes('&lt;script&gt;&quot;'));
   assert.ok(!svg.includes('<script>'));
+});
+
+function farmingMatches(count, { region = 'EU', hour = 18, days = 2, seconds = 600, chests = 10, timed = false } = {}) {
+  return Array.from({ length: count }, (_, i) => match(Array.from({ length: chests }, (_, j) => (j + 1) * 5), seconds, {
+    matchId: `farm-${region}-${hour}-${i}`, matchmakingRegion: region,
+    matchDate: `2026-11-${String(20 + i % days).padStart(2, '0')}T${String(hour).padStart(2, '0')}:00:00`,
+    ...(!timed ? { openingTimeline: null } : {})
+  }));
+}
+test('farming notes require two adequately sampled groups, ignoring lucky sparse sessions and unknown regions', () => {
+  const notes = farmingInsights([...farmingMatches(5, { region: 'EU', chests: 10 }),
+    ...farmingMatches(5, { region: 'NA', chests: 5 }), ...farmingMatches(1, { region: 'ME', chests: 100 }),
+    ...farmingMatches(10, { region: undefined, chests: 200 }).map(m => ({ ...m, matchmakingRegion: null }))]);
+  assert.equal(notes.region.kind, 'leader');
+  assert.equal(notes.region.best.key, 'EU');
+  assert.equal(notes.region.unknownMatches, 10);
+  assert.equal(notes.region.best.rate, 50 / 65);
+  assert.equal(farmingInsights(farmingMatches(5)).region.kind, 'single');
+  assert.equal(farmingInsights(farmingMatches(20, { days: 1 })).region.kind, 'insufficient');
+});
+test('region ties are presented as similar rates rather than a strong winner', () => {
+  const notes = farmingInsights([...farmingMatches(5, { region: 'EU', chests: 10 }), ...farmingMatches(5, { region: 'NA', chests: 10 })]);
+  assert.equal(notes.region.kind, 'close');
+});
+test('time slots use local start time, distinct days, and paired duration including downtime', () => {
+  const matches = [...farmingMatches(5, { hour: 18, chests: 10 }), ...farmingMatches(5, { hour: 6, chests: 3 }),
+    ...farmingMatches(1, { hour: 23, chests: 100 })];
+  const notes = farmingInsights(matches);
+  assert.equal(notes.time.kind, 'leader');
+  assert.equal(notes.time.best.label, '18:00–21:00');
+  assert.equal(notes.time.best.days, 2);
+  const midnight = timeOfDayTotals([match([1], 60, { matchDate: '2026-11-21T00:00:00' })], 'owner', 0);
+  assert.equal(midnight[0].label, '00:00–03:00');
+  assert.equal(midnight[0].rate, 1);
+  assert.equal(notes.time.groups.find(g => g.key === '21').label, '21:00–24:00');
+});
+test('time and duration notes follow the region filter while region ranking retains all regions', () => {
+  const notes = farmingInsights([...farmingMatches(5, { region: 'EU', hour: 18 }), ...farmingMatches(5, { region: 'NA', hour: 6 })], 'owner', { region: 'NA' });
+  assert.equal(notes.region.groups.length, 2);
+  assert.equal(notes.time.groups.length, 1);
+  assert.equal(notes.time.best.key, '6');
+});
+test('restart notes use timestamped matches and actual partial recordings, including zero-opening matches', () => {
+  const matches = farmingMatches(5, { timed: true });
+  const notes = farmingInsights([...matches, ...farmingMatches(3, { chests: 0, seconds: 60, timed: true })]);
+  assert.equal(notes.duration.kind, 'restart');
+  assert.equal(notes.duration.best.minute, 2);
+  assert.equal(notes.duration.best.matches, 5);
+  assert.equal(notes.duration.best.rate, 50 / 37); // 5*(2+3) + 3*(1+3) minutes.
+  assert.equal(notes.duration.fullRate, 50 / 77);
+});
+test('restart notes reject cutoffs reached by too few long survivors', () => {
+  const matches = [...farmingMatches(5, { seconds: 180, chests: 1, timed: true }),
+    ...farmingMatches(1, { seconds: 1800, chests: 100, timed: true })];
+  const notes = farmingInsights(matches);
+  assert.ok(!notes.duration.best || notes.duration.best.matches >= 5);
+  assert.ok(!notes.duration.best || notes.duration.best.minute < 3);
+});
+test('uniform sustained openings produce a full-match note instead of a restart suggestion', () => {
+  const matches = farmingMatches(5, { timed: true }).map(m => ({ ...m,
+    openingTimeline: Array.from({ length: 10 }, (_, i) => ({ playerId: 'owner', replayTimeSeconds: (i + .5) * 60 })) }));
+  assert.equal(farmingInsights(matches).duration.kind, 'continue');
+  assert.equal(farmingInsights(matches, 'owner', { downtimeMinutes: 0 }).duration.kind, 'continue');
+});
+test('missing timestamps retain region/time notes but cannot produce restart advice', () => {
+  const notes = farmingInsights([...farmingMatches(5, { region: 'EU', hour: 18 }), ...farmingMatches(5, { region: 'NA', hour: 6, chests: 5 })]);
+  assert.equal(notes.region.kind, 'leader');
+  assert.equal(notes.time.kind, 'leader');
+  assert.equal(notes.duration.kind, 'insufficient');
+  assert.equal(notes.duration.matches, 0);
+  assert.equal(notes.duration.excluded, 10);
+});
+test('unreadable data, unknown scoped counts, and unavailable team membership cannot rank farming choices', () => {
+  const matches = farmingMatches(5, { timed: true });
+  assert.equal(farmingInsights(matches.map(m => ({ ...m, coverage: 'Some replay data unreadable' }))).samples, 0);
+  assert.equal(farmingInsights(matches.map(m => ({ ...m, players: [{ playerId: 'owner', isOwner: true, chests: null }] }))).samples, 0);
+  assert.equal(farmingInsights(matches.map(m => ({ ...m, coverage: 'team membership unavailable' })), 'squad').samples, 0);
+  assert.equal(farmingInsights(farmingMatches(5, { chests: 0, timed: true })).duration.kind, 'no-openings');
+});
+
+function teammateMatches(region, earlyCount = 0) {
+  return farmingMatches(5, { region, timed: true }).map((m, i) => ({ ...m,
+    players: [...m.players, { playerId: 'mate', isOwner: false, chests: region === 'NA' ? 20 : 10, coverage: 'Complete chest data' }],
+    disconnectMonitoringAvailable: true,
+    playerDisconnects: i < earlyCount ? [{ playerId: 'MATE', replayTimeSeconds: 120 }] : []
+  }));
+}
+test('teammate contribution and recorded disconnect rates can favor different regions', () => {
+  const notes = teammateRegionInsights([...teammateMatches('EU', 0), ...teammateMatches('NA', 3)]);
+  assert.equal(notes.contribution.best.key, 'NA');
+  assert.equal(notes.stability.kind, 'leader');
+  assert.equal(notes.stability.best.key, 'EU');
+  assert.equal(notes.stability.runnerUp.rate, .6);
+});
+test('early disconnects are distinct from owner exits, later departures, and repeated teammate events', () => {
+  const matches = teammateMatches('EU').map((m, i) => ({ ...m, playerDisconnects: i === 0 ? [
+    { playerId: 'owner', replayTimeSeconds: 50 }, { playerId: 'mate', replayTimeSeconds: 500 }
+  ] : i === 1 ? [{ playerId: 'mate', replayTimeSeconds: 120 }, { playerId: 'mate', replayTimeSeconds: 121 }] : [] }));
+  const result = teammateRegionInsights(matches);
+  assert.equal(result.stability.best.disconnectMatches, 1);
+  assert.equal(result.stability.best.rate, .2);
+});
+test('legacy/short/untimed recordings are unavailable tracking, rather than evidence of teammates staying', () => {
+  const matches = teammateMatches('EU');
+  matches[0].disconnectMonitoringAvailable = null;
+  matches[1].recordingLengthInMs = 300000;
+  matches[2].playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: null }];
+  const result = teammateRegionInsights(matches);
+  assert.equal(result.stability.groups[0].matches, 2);
+  assert.equal(result.stability.unavailable, 3);
+  assert.equal(result.stability.kind, 'insufficient');
+  assert.equal(result.contribution.groups[0].matches, 5);
+});
+test('disconnect cutoff is adjustable and recordings need a minute beyond it', () => {
+  const matches = teammateMatches('EU', 5);
+  const earlier = teammateRegionInsights(matches, { earlyMinutes: 2 });
+  assert.equal(earlier.stability.best.rate, 0); // Exactly at the cutoff is not before it.
+  const later = teammateRegionInsights(matches, { earlyMinutes: 3 });
+  assert.equal(later.stability.best.rate, 1);
+  assert.equal(teammateRegionInsights(matches, { earlyMinutes: 10 }).stability.kind, 'insufficient');
 });
 test('Treasure Hour transitions start inclusively, end exclusively, and stop after listed dates', () => {
   const before = treasureStatus(Date.parse('2026-11-28T18:59:59Z'));

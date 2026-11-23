@@ -33,6 +33,9 @@ internal static class ChestMatchFactory
         if (unresolved > 0) coverage += $"; {unresolved} openings have no identified player";
         if (owner.TeamIndex is null or <= 0) coverage += "; team membership unavailable";
         var squadIds = players.Select(player => player.PlayerId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var disconnects = analysis.Disconnects.Where(d => d.PlayerId is not null && squadIds.Contains(d.PlayerId))
+            .Select(d => new ChestPlayerDisconnect(d.PlayerId!, d.ReplayTimeSeconds is float time && float.IsFinite(time) && time >= 0 ? time : null))
+            .OrderBy(d => d.ReplayTimeSeconds ?? float.MaxValue).ToArray();
         // This field describes play-again matchmaking. Preserve its reported broad
         // region; do not infer an exact server or choose among conflicting players.
         var regions = analysis.Replay.PlayerData.Where(player => !player.IsBot && !string.IsNullOrWhiteSpace(player.PlayerId))
@@ -103,6 +106,7 @@ internal static class ChestMatchFactory
             owner.PlayerId!, mode, analysis.Replay.GameData.CurrentPlaylist, matchDate, players, coverage)
             { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, OpeningTimeline = timeline,
                 MatchmakingRegion = region, MatchmakingRegionCoverage = regionCoverage,
+                PlayerDisconnects = disconnects, DisconnectMonitoringAvailable = analysis.DisconnectMonitoringAvailable,
                 Rewards = orderedRewards, RewardCoverage = rewardCoverage,
                 IsStandardMode = ChestEligibility.GetMode(analysis.Replay.GameData.CurrentPlaylist,
                     analysis.Replay.GameData.IsTournamentRound, analysis.Replay.GameData.IsLargeTeamGame == true) is not null };

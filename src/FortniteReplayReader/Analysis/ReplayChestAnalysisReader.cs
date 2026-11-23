@@ -21,6 +21,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private readonly ReplayChestAccumulator chestData = new();
     private readonly ReplayTreasureRewardAccumulator rewardData = new();
     private readonly ReplayTreasureGrantAccumulator grantData = new();
+    private readonly ReplayDisconnectAccumulator disconnectData = new();
+    private bool disconnectMonitoringAvailable;
     private readonly Dictionary<uint, uint> pawnStates = [];
     private readonly Dictionary<uint, string> playerStates = [];
     private readonly HashSet<uint> knownPlayerStates = [];
@@ -36,7 +38,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     {
         "PlayerId", "PlayerID", "UniqueId", "UniqueID", "PlatformUniqueNetId", "BotUniqueId",
         "bIsABot", "bIsSpectator", "bOnlySpectator", "TeamIndex", "Platform",
-        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId", "KeepPlayingTogetherMatchmakingRegion"
+        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId", "KeepPlayingTogetherMatchmakingRegion", "bIsDisconnected"
     };
     private static readonly HashSet<string> PawnFields = new(StringComparer.Ordinal) { "PlayerState" };
     private static readonly HashSet<string> PlaylistFields = new(StringComparer.Ordinal);
@@ -84,7 +86,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
             diagnostics.Add("Treasure handler receipts identify recipients and may be shared with squad members. They do not identify the source chest, opener, or prize type.");
         return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0)
             { Rewards = rewards, HasRewardDecodeErrors = rewardDecodeErrors > 0,
-                Grants = grants, HasGrantDecodeErrors = grantDecodeErrors > 0 };
+                Grants = grants, HasGrantDecodeErrors = grantDecodeErrors > 0,
+                Disconnects = disconnectData.Finish(playerStates), DisconnectMonitoringAvailable = disconnectMonitoringAvailable };
     }
 
     public override void ReadReplayInfo(FArchive archive)
@@ -233,6 +236,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         [NotNullWhen(true)] out INetFieldExportGroup? exportGroup, bool enablePropertyChecksum = true, bool netDeltaUpdate = false)
     {
         exportGroup = null;
+        if (group.PathName == "/Script/FortniteGame.FortPlayerStateAthena" && group.NetFieldExports.Any(field => field?.Name == "bIsDisconnected"))
+            disconnectMonitoringAvailable = true;
         if (ReplayTreasureRewardDecoder.IsRewardGroup(group) && Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint rewardActor)
         {
             if (!rewardData.ReadUpdate(rewardActor, group, archive, enablePropertyChecksum, currentTime)) rewardDecodeErrors++;
@@ -373,6 +378,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
                 knownPlayerStates.Add(actor);
                 var id = state.bIsABot == true ? state.BotUniqueId : state.UniqueId ?? state.UniqueID ?? state.PlatformUniqueNetId;
                 if (!string.IsNullOrWhiteSpace(id)) playerStates[actor] = id;
+                disconnectData.Update(actor, state.bIsDisconnected, currentTime);
             }
         }
         // PlayerPawn is used only for actor attribution above; its gameplay and

@@ -88,6 +88,29 @@ public class ChestRosterTest
     }
 
     [Fact]
+    public void DisconnectFlagReflectsLaterUpdatesInsteadOfFreezingInitialFalse()
+    {
+        var builder = new FortniteReplayBuilder();
+        builder.UpdatePlayerState(0, Player("owner", 4));
+        builder.UpdatePlayerState(0, new() { bIsDisconnected = false });
+        builder.UpdatePlayerState(0, new() { bIsDisconnected = true });
+        Assert.True(Assert.Single(builder.Build(new FortniteReplay()).PlayerData).Disconnected);
+        builder.UpdatePlayerState(0, new() { bIsDisconnected = false });
+        Assert.False(Assert.Single(builder.Build(new FortniteReplay()).PlayerData).Disconnected);
+    }
+
+    [Fact]
+    public void SquadDisconnectsExcludeBotsAndOpponentsAndKeepUnavailableTimesNull()
+    {
+        var match = Build("match-a", [Player("owner", 4), Player("teammate", 4), Player("enemy", 7), Player("bot", 4, true)], [],
+            disconnects: [new(1, "OWNER", 50), new(2, "teammate", float.NaN), new(3, "enemy", 70), new(4, "bot", 80)], monitoring: true);
+        Assert.True(match.DisconnectMonitoringAvailable);
+        Assert.Equal(2, match.PlayerDisconnects!.Count);
+        Assert.Equal("OWNER", match.PlayerDisconnects[0].PlayerId);
+        Assert.Null(match.PlayerDisconnects[1].ReplayTimeSeconds);
+    }
+
+    [Fact]
     public void AnonymousMembersCannotBeJoinedAcrossSeparateMatches()
     {
         var first = Build("match-a", [Player("owner", 4), Player(null, 4)], []);
@@ -118,7 +141,8 @@ public class ChestRosterTest
         Assert.Equal(ChestCoverage.Unavailable, match.Coverage);
     }
 
-    private static ChestMatch Build(string matchId, FortPlayerState[] players, ReplayChestOpening[] openings, int fields = 1)
+    private static ChestMatch Build(string matchId, FortPlayerState[] players, ReplayChestOpening[] openings, int fields = 1,
+        ReplayPlayerDisconnect[]? disconnects = null, bool monitoring = false)
     {
         var builder = new FortniteReplayBuilder();
         for (uint channel = 0; channel < players.Length; channel++) builder.UpdatePlayerState(channel, players[channel]);
@@ -126,7 +150,7 @@ public class ChestRosterTest
         replay.GameData.CurrentPlaylist = "Playlist_DefaultSquad";
         var owner = replay.PlayerData.Single(player => player.PlayerId == "owner");
         owner.IsReplayOwner = true;
-        return ChestMatchFactory.Build(new(replay, openings, [], 1, fields, false), owner,
+        return ChestMatchFactory.Build(new(replay, openings, [], 1, fields, false) { Disconnects = disconnects ?? [], DisconnectMonitoringAvailable = monitoring }, owner,
             Path.Combine(Path.GetTempPath(), matchId + ".replay"), matchId, "Battle Royale · Build", new(2026, 11, 10));
     }
 

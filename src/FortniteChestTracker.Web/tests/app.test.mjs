@@ -263,6 +263,44 @@ test('pace scope is visible beside the graph and the all-matches average include
   assert.match(app.elements.get('pace-table').innerHTML, /<td class="number">2<\/td>/); // 6 teammate chests / 3 recorded minutes.
   assert.ok(!app.elements.get('pace-chart').innerHTML.includes('chart-line'));
 });
+test('farming notes stay with the selected player/mode and update for the region filter', async () => {
+  const timeline = [
+    ...Array.from({ length: 7 }, (_, i) => ({ playerId: 'owner-a', replayTimeSeconds: i + 1 })),
+    ...Array.from({ length: 3 }, (_, i) => ({ playerId: 'teammate', replayTimeSeconds: i + 10 }))
+  ];
+  const samples = ['EU', 'NA'].flatMap(region => Array.from({ length: 5 }, (_, i) => match({
+    matchId: `${region}-${i}`, matchmakingRegion: region, matchmakingRegionCoverage: 'Reported',
+    matchDate: `2026-11-${20 + i % 2}T${region === 'EU' ? '18' : '06'}:00:00`,
+    recordingLengthInMs: region === 'EU' ? 600000 : 1200000, openingTimeline: timeline
+  })));
+  samples.push(match({ matchId: 'different-mode', playlist: 'Playlist_DefaultSolo', matchDate: '2026-11-19T12:00:00',
+    matchmakingRegion: 'NA', recordingLengthInMs: 20000, openingTimeline: timeline }));
+  const app = loadApp({}, samples);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  assert.equal(app.elements.get('insight-region-title').textContent, 'Europe');
+  assert.equal(app.elements.get('insight-time-title').textContent, '18:00–21:00');
+  assert.equal(app.elements.get('insight-stop-title').textContent, 'Try replay minute 2');
+  assert.match(app.elements.get('insights-summary').textContent, /10 usable matches/);
+  app.elements.get('pace-average-group').value = 'all';
+  app.elements.get('pace-average-group').listeners.get('change')();
+  assert.match(app.elements.get('insights-summary').textContent, /10 usable matches/);
+  app.elements.get('analytics-region').value = 'NA';
+  app.elements.get('analytics-region').listeners.get('change')();
+  assert.equal(app.elements.get('insight-region-title').textContent, 'Europe');
+  assert.equal(app.elements.get('insight-time-title').textContent, 'More comparisons needed');
+  assert.match(app.elements.get('insights-summary').textContent, /time and restart notes use North America/);
+});
+test('squad details distinguish recorded disconnect times from legacy unavailable tracking', async () => {
+  const app = loadApp({}, [match({ disconnectMonitoringAvailable: true,
+    playerDisconnects: [{ playerId: 'teammate', replayTimeSeconds: 121 }] })]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  assert.equal(app.elements.get('squad-body').children[1].children[6].textContent, 'First recorded 02:01');
+  assert.equal(app.elements.get('squad-body').children[0].children[6].textContent, 'None recorded');
+  app.run('state.selectedMatch.disconnectMonitoringAvailable = null; renderSquad();');
+  assert.equal(app.elements.get('squad-body').children[0].children[6].textContent, 'Not tracked · rescan');
+});
 
 test('rotation and repeated scans retain prior matches without accumulating copies', async () => {
   const first = match({ matchDate: '2026-11-02T12:00:00' });

@@ -11,6 +11,8 @@ public sealed record ReplayChestOpening(uint ChestActorGuid, string ChestClass, 
     public int ResetCycleIndex { get; init; }
 }
 
+public sealed record ReplayPlayerDisconnect(uint PlayerStateActorGuid, string? PlayerId, float? ReplayTimeSeconds);
+
 /// <summary>Counts are an observed minimum; local replays do not record every distant teammate interaction.</summary>
 public sealed record ReplayChestAnalysis(FortniteReplay Replay, IReadOnlyList<ReplayChestOpening> Openings,
     IReadOnlyList<string> Diagnostics, int ChestActorsSeen, int SearchFieldsDecoded, bool HasDecodeErrors)
@@ -19,6 +21,25 @@ public sealed record ReplayChestAnalysis(FortniteReplay Replay, IReadOnlyList<Re
     public bool HasRewardDecodeErrors { get; init; }
     public IReadOnlyList<ReplayTreasureGrant> Grants { get; init; } = [];
     public bool HasGrantDecodeErrors { get; init; }
+    public IReadOnlyList<ReplayPlayerDisconnect> Disconnects { get; init; } = [];
+    public bool DisconnectMonitoringAvailable { get; init; }
+}
+
+internal sealed class ReplayDisconnectAccumulator
+{
+    private readonly Dictionary<uint, bool> states = [];
+    private readonly List<(uint Actor, float? Time)> events = [];
+    internal void Update(uint actor, bool? disconnected, float? time)
+    {
+        if (disconnected is not bool value) return;
+        if (states.TryGetValue(actor, out var previous) && previous == value) return;
+        states[actor] = value;
+        // A first true flag is a recorded disconnection, even when an earlier
+        // connected flag was omitted. Never infer voluntary quitting or a cause.
+        if (value) events.Add((actor, time));
+    }
+    internal IReadOnlyList<ReplayPlayerDisconnect> Finish(IReadOnlyDictionary<uint, string> players) =>
+        events.Select(e => new ReplayPlayerDisconnect(e.Actor, players.GetValueOrDefault(e.Actor), e.Time)).ToArray();
 }
 
 internal sealed class ReplayChestAccumulator

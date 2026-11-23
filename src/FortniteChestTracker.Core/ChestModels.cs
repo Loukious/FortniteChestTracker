@@ -6,6 +6,7 @@ public sealed record SkippedReplay(string FileName, string Reason);
 
 public sealed record ChestPlayer(string Name, string PlayerId, bool IsOwner, int? Chests, string Coverage);
 public sealed record ChestOpeningTime(string PlayerId, float ReplayTimeSeconds);
+public sealed record ChestPlayerDisconnect(string PlayerId, float? ReplayTimeSeconds);
 
 public sealed record ChestReward(
     string PlayerName, string? PlayerId, bool IsOwner, bool IsTeammate,
@@ -36,6 +37,8 @@ public sealed record ChestMatch(
     public IReadOnlyList<ChestOpeningTime>? OpeningTimeline { get; init; }
     public string? MatchmakingRegion { get; init; }
     public string MatchmakingRegionCoverage { get; init; } = "Reported matchmaking region unavailable";
+    public IReadOnlyList<ChestPlayerDisconnect>? PlayerDisconnects { get; init; }
+    public bool? DisconnectMonitoringAvailable { get; init; }
     public bool? IsStandardMode { get; init; }
     public IReadOnlyList<ChestReward> Rewards { get; init; } = [];
     public string RewardCoverage { get; init; } = ChestRewardCoverage.RecordedOnly;

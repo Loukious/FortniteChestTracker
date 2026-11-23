@@ -103,6 +103,21 @@
           <article><h3>This week · Opened</h3><p class="summary-value" id="weekly-total">0</p><p class="muted" id="weekly-rate"></p></article>
           <article><h3>Selected period · Opened</h3><p class="summary-value" id="period-total">0</p><p class="muted" id="period-label"></p></article>
         </div>
+        <section class="farming-insights" aria-labelledby="insights-heading">
+          <h2 id="insights-heading">Farming insights</h2><p class="hint" id="insights-summary"></p>
+          <div class="insight-cards">
+            <article><h3>Region to try</h3><p class="insight-badge" id="insight-region-badge">More data needed</p><p class="insight-title" id="insight-region-title"></p><p id="insight-region-note"></p><p class="hint" id="insight-region-missing"></p></article>
+            <article><h3>When to restart</h3><p class="insight-badge" id="insight-stop-badge">More data needed</p><p class="insight-title" id="insight-stop-title"></p><p id="insight-stop-note"></p></article>
+            <article><h3>Time slot to try</h3><p class="insight-badge" id="insight-time-badge">More data needed</p><p class="insight-title" id="insight-time-title"></p><p id="insight-time-note"></p></article>
+            <article><h3>Teammate chests by region</h3><p class="insight-badge" id="insight-team-chests-badge">More data needed</p><p class="insight-title" id="insight-team-chests-title"></p><p id="insight-team-chests-note"></p></article>
+            <article><h3>Fewer early teammate disconnects</h3><p class="insight-badge" id="insight-team-stability-badge">More data needed</p><p class="insight-title" id="insight-team-stability-title"></p><p id="insight-team-stability-note"></p></article>
+          </div>
+          <p class="hint" id="insights-method"></p>
+          <div class="analytics-controls"><label class="analytics-field">Early disconnect = before replay minute<input type="number" id="insights-early-cutoff" value="5" min="2" max="30" step="1"></label></div>
+          <p class="hint" id="insights-team-method"></p>
+          <details class="analytics-data"><summary>Compare teammate contribution and disconnects</summary><div class="table-scroll" tabindex="0"><table><thead><tr><th>Reported region</th><th class="number">Teammate chests/match</th><th class="number">Teammate chests/hour (estimated)</th><th class="number">Matches with chest counts</th><th class="number">Early disconnect matches (%)</th><th class="number">Tracked matches</th><th class="number">Unavailable tracking/length</th></tr></thead><tbody id="insights-team-table"></tbody></table></div></details>
+          <details class="analytics-data"><summary>Compare local times of day</summary><p class="hint">Entire recordings are grouped by the local time the match started. Empty time slots have no observations. Region and date filters apply; the same player and game mode are compared.</p><div class="table-scroll" tabindex="0"><table><thead><tr><th>Local match start</th><th class="number">Estimated chests/hour</th><th class="number">Chests opened</th><th class="number">Matches used</th><th class="number">Different days</th><th>Sample size</th></tr></thead><tbody id="insights-time-table"></tbody></table></div><p class="hint" id="insights-time-empty">No comparable matches with known chest counts and recording length.</p></details>
+        </section>
         <div class="analytics-controls">
           <label class="analytics-field">Calendar view<select id="calendar-group"><option value="day">Daily</option><option value="week">Weekly</option></select></label>
           <label class="analytics-field">Graph measure<select id="calendar-metric"><option value="count">Opened total</option><option value="rate">Opened per recorded minute</option></select></label>
@@ -149,7 +164,8 @@
         <div role="tabpanel" id="squad-panel" aria-labelledby="squad-tab">
           <p class="detail-summary muted" id="selected-match-summary">Select a match to see its replay owner and teammates.</p>
           <p class="detail-summary muted" id="selected-match-reward-summary"></p>
-          <div class="table-scroll" tabindex="0" aria-label="Selected match squad"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Player ID</th></tr></thead><tbody id="squad-body"></tbody></table></div>
+          <p class="detail-summary muted">Recorded disconnects may follow elimination or network loss; they do not establish a voluntary quit. Missing events do not prove a player stayed.</p>
+          <div class="table-scroll" tabindex="0" aria-label="Selected match squad"><table><thead><tr><th>Player</th><th>Role</th><th class="number">Opened</th><th class="number">Rewards recorded</th><th>Coverage</th><th>Player ID</th><th>Recorded disconnect</th></tr></thead><tbody id="squad-body"></tbody></table></div>
         </div>
         <div role="tabpanel" id="players-panel" aria-labelledby="players-tab" hidden>
           <p class="detail-summary muted">Totals for the replay owners and teammates in the included matches. Other players' recorded rewards appear in Rewards.</p>
