@@ -76,6 +76,17 @@ test('timeline enrichment replaces legacy results and persists through reload an
   for (const record of parseHistoryBackup(JSON.stringify(await current.backup()))) await imported.saveRecord(record);
   assert.deepEqual((await imported.read()).matches[0].openingTimeline, timeline);
 });
+test('region enrichment retains identity and survives an older timeline backup', async () => {
+  const storage = new Storage();
+  const old = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v1' });
+  await old.saveMatch(match({ openingTimeline: [] }));
+  const backup = await old.backup();
+  const current = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v2-region' });
+  await current.saveMatch(match({ openingTimeline: [], matchmakingRegion: 'EU' }));
+  await current.saveRecord(backup.records[0]);
+  assert.equal((await current.read()).matches.length, 1);
+  assert.equal((await current.read()).matches[0].matchmakingRegion, 'EU');
+});
 
 test('match and player IDs preserve one result across copies, names, and visits', async () => {
   const storage = new Storage();

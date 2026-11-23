@@ -181,7 +181,12 @@ comparison. Scope can be owner, teammates, or squad.
 Match pace uses timestamped openings in 1/2/5 minute windows from replay minute 0,
 including recorded lobby/drop time. Partial final windows use their actual
 duration; ended replays contribute no later exposure. The comparison line pools
-only the same replay owner and playlist. Missing or invalid timestamps exclude a
+the same replay owner and playlist by default. The graph can show a single match
+with an average line or the average alone. "All matches in selected filters"
+includes every eligible match in the current owner/date/region/mode view. The
+Owner/Teammates/Squad selector beside the graph also updates the calendar scope.
+The data table identifies chest counts, rates, recorded minutes, and how many
+matches contribute to each average. Missing or invalid timestamps exclude a
 recording from pace comparisons without removing saved totals. Rescanning an
 available replay enriches older saved history; rotated files cannot recover times.
 
@@ -196,6 +201,15 @@ Treasure Hour uses explicit UTC sessions in `wwwroot/treasure-hour.js`, converte
 to local time. Upcoming November 28/29 sessions are labelled expected until
 confirmed. After the listed schedule expires, the timer shows no upcoming window
 and links to the announcement source; it never extrapolates new sessions.
+
+Region analysis uses the recorded `KeepPlayingTogetherMatchmakingRegion` values
+from identified human players. A recognized unanimous value is shown as a reported
+broad matchmaking region; missing, unrecognized, or conflicting values are Unknown.
+The field concerns play-again matchmaking and does not confirm the exact game
+server/subregion. The region filter applies to analytics activity and pace; region
+comparisons keep the same owner and playlist across all reported regions in the
+selected date period. Rescanning adds regions to older saved matches without
+duplicating counts.
 
 ## Deploy to GitHub Pages
 

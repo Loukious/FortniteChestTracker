@@ -17,6 +17,9 @@ public class FortPlayerStateCache
 [NetFieldExportGroup("/Script/FortniteGame.FortPlayerStateAthena", minimalParseMode: ParseMode.Minimal)]
 public class FortPlayerState : INetFieldExportGroup
 {
+    [NetFieldExport("KeepPlayingTogetherMatchmakingRegion", RepLayoutCmdType.PropertyString)]
+    public string? KeepPlayingTogetherMatchmakingRegion { get; set; }
+
     [NetFieldExport("RemoteRole", RepLayoutCmdType.Ignore)]
     public object RemoteRole { get; set; }
 

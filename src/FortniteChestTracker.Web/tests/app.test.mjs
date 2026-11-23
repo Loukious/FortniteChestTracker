@@ -220,10 +220,48 @@ test('saved-history analytics show daily and weekly graphs and retain legacy tot
   assert.equal(app.elements.get('daily-total').textContent, '7');
   assert.equal(app.elements.get('weekly-total').textContent, '7');
   assert.match(app.elements.get('calendar-chart').innerHTML, /<svg/);
-  assert.match(app.elements.get('pace-summary').textContent, /timing unavailable/);
+  assert.match(app.elements.get('pace-summary').textContent, /no opening times/);
   app.elements.get('calendar-group').value = 'week';
   app.elements.get('calendar-group').listeners.get('change')();
   assert.match(app.elements.get('calendar-chart').innerHTML, /Weekly owner/);
+});
+test('region filter narrows activity while comparing regions for the same owner and playlist', async () => {
+  const app = loadApp({}, [match({ matchmakingRegion: 'EU', recordingLengthInMs: 60000 }),
+    match({ matchId: 'match-na', matchmakingRegion: 'NA', recordingLengthInMs: 60000 })]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  app.elements.get('analytics-region').value = 'EU';
+  app.elements.get('analytics-region').listeners.get('change')();
+  assert.equal(app.elements.get('period-total').textContent, '7');
+  assert.match(app.elements.get('region-chart').innerHTML, /Europe/);
+  assert.match(app.elements.get('region-chart').innerHTML, /North America/);
+  assert.match(app.elements.get('region-summary').textContent, /2 matches/);
+});
+test('pace scope is visible beside the graph and the all-matches average includes other playlists', async () => {
+  const timeline = [
+    ...Array.from({ length: 7 }, (_, i) => ({ playerId: 'owner-a', replayTimeSeconds: i + 1 })),
+    ...Array.from({ length: 3 }, (_, i) => ({ playerId: 'teammate', replayTimeSeconds: i + 10 }))
+  ];
+  const app = loadApp({}, [match({ openingTimeline: timeline, recordingLengthInMs: 60000 }),
+    match({ matchId: 'match-duo', playlist: 'Playlist_DefaultDuo', openingTimeline: timeline, recordingLengthInMs: 120000 })]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  assert.equal(app.elements.get('pace-scope').value, 'owner');
+  assert.match(app.elements.get('pace-scope-summary').textContent, /teammates excluded/);
+  app.elements.get('pace-scope').value = 'teammates';
+  app.elements.get('pace-scope').listeners.get('change')();
+  assert.equal(app.elements.get('analytics-scope').value, 'teammates');
+  assert.match(app.elements.get('pace-scope-summary').textContent, /owner excluded/);
+  assert.match(app.elements.get('pace-summary').textContent, /1 matches used/);
+  app.elements.get('pace-average-group').value = 'all';
+  app.elements.get('pace-average-group').listeners.get('change')();
+  app.elements.get('pace-view').value = 'average';
+  app.elements.get('pace-view').listeners.get('change')();
+  assert.equal(app.elements.get('pace-average-legend').hidden, true);
+  assert.match(app.elements.get('pace-summary').textContent, /2 matches used/);
+  assert.match(app.elements.get('pace-table-head').innerHTML, /Chests opened across matches/);
+  assert.match(app.elements.get('pace-table').innerHTML, /<td class="number">2<\/td>/); // 6 teammate chests / 3 recorded minutes.
+  assert.ok(!app.elements.get('pace-chart').innerHTML.includes('chart-line'));
 });
 
 test('rotation and repeated scans retain prior matches without accumulating copies', async () => {

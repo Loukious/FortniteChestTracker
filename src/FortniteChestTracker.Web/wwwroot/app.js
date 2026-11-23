@@ -503,9 +503,11 @@ function renderFilteredReport() {
     dateCell.append(button);
     const rewardsCell = cell(recordedRewardCount(matchRewards(match).length), 'number');
     rewardsCell.title = rewardCoverage(match);
+    const regionCell = cell(match.matchmakingRegion || 'Unknown');
+    regionCell.title = match.matchmakingRegionCoverage || 'Reported matchmaking region unavailable';
     row.append(dateCell, cell(String(match.mode ?? '').replace('Battle Royale', 'BR')), cell(match.ownerName),
       cell(formatCount(counts.owner, match.coverage), 'number'), cell(formatCount(counts.teammates, match.coverage), 'number'), cell(formatCount(counts.squad, match.coverage), 'number'),
-      rewardsCell, cell(match.coverage), cell(String(match.filePath ?? '').split(/[\\/]/).pop()));
+      rewardsCell, cell(match.coverage), cell(String(match.filePath ?? '').split(/[\\/]/).pop()), regionCell);
     rows.append(row);
   });
   ui['matches-body'].replaceChildren(rows);

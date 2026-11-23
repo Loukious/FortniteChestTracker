@@ -58,6 +58,36 @@ public class ChestRosterTest
     }
 
     [Fact]
+    public void ConsistentHumanReportsExposeBroadRegionAndExcludeBots()
+    {
+        var match = Build("match-a", [PlayerWithRegion("owner", 4, " na "), PlayerWithRegion("enemy", 7, "NA"),
+            PlayerWithRegion("bot", 4, "EU", true)], []);
+        Assert.Equal("NA", match.MatchmakingRegion);
+        Assert.Contains("exact server/subregion unconfirmed", match.MatchmakingRegionCoverage);
+    }
+
+    [Fact]
+    public void ConflictingAndUnrecognizedRegionsRemainUnknown()
+    {
+        var conflicting = Build("match-a", [PlayerWithRegion("owner", 4, "EU"), PlayerWithRegion("enemy", 7, "NA")], []);
+        Assert.Null(conflicting.MatchmakingRegion);
+        Assert.Contains("Conflicting", conflicting.MatchmakingRegionCoverage);
+        Assert.Null(Build("match-a", [PlayerWithRegion("owner", 4, "not-a-region")], []).MatchmakingRegion);
+        Assert.Null(Build("match-a", [Player("owner", 4)], []).MatchmakingRegion);
+    }
+
+    [Fact]
+    public void RegionReportsSurviveAbsentUpdatesAndPreserveChanges()
+    {
+        var builder = new FortniteReplayBuilder();
+        builder.UpdatePlayerState(0, PlayerWithRegion("owner", 4, "EU"));
+        builder.UpdatePlayerState(0, new());
+        builder.UpdatePlayerState(0, new() { KeepPlayingTogetherMatchmakingRegion = "NA" });
+        var player = Assert.Single(builder.Build(new FortniteReplay()).PlayerData);
+        Assert.Equal(["EU", "NA"], player.ReportedMatchmakingRegions.Order());
+    }
+
+    [Fact]
     public void AnonymousMembersCannotBeJoinedAcrossSeparateMatches()
     {
         var first = Build("match-a", [Player("owner", 4), Player(null, 4)], []);
@@ -104,6 +134,12 @@ public class ChestRosterTest
     {
         UniqueId = id!, TeamIndex = team, bIsABot = bot, BotUniqueId = bot ? id : null
     };
+    private static FortPlayerState PlayerWithRegion(string id, int team, string region, bool bot = false)
+    {
+        var player = Player(id, team, bot);
+        player.KeepPlayingTogetherMatchmakingRegion = region;
+        return player;
+    }
 
     private static ReplayChestOpening Opening(uint actor, string? player) => new(actor, "Chest", null, null, player, 1);
 }

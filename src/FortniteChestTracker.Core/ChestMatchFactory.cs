@@ -33,6 +33,16 @@ internal static class ChestMatchFactory
         if (unresolved > 0) coverage += $"; {unresolved} openings have no identified player";
         if (owner.TeamIndex is null or <= 0) coverage += "; team membership unavailable";
         var squadIds = players.Select(player => player.PlayerId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // This field describes play-again matchmaking. Preserve its reported broad
+        // region; do not infer an exact server or choose among conflicting players.
+        var regions = analysis.Replay.PlayerData.Where(player => !player.IsBot && !string.IsNullOrWhiteSpace(player.PlayerId))
+            .SelectMany(player => player.ReportedMatchmakingRegions).Select(region => region.Trim().ToUpperInvariant())
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        string[] supportedRegions = ["EU", "NA", "NAE", "NAW", "NAC", "ASIA", "BR", "OCE", "ME"];
+        var region = regions.Length == 1 && supportedRegions.Contains(regions[0]) ? regions[0] : null;
+        var regionCoverage = region is not null ? "Reported by KeepPlayingTogetherMatchmakingRegion; broad play-again matchmaking region, exact server/subregion unconfirmed"
+            : regions.Length > 1 ? "Conflicting reported matchmaking regions: " + string.Join(", ", regions)
+            : regions.Length == 1 ? "Unrecognized reported matchmaking region" : "Reported matchmaking region unavailable";
         var timeline = available ? analysis.Openings.Where(opening => opening.PlayerId is not null &&
             squadIds.Contains(opening.PlayerId) && opening.ReplayTimeSeconds is float time &&
             float.IsFinite(time) && time >= 0)
@@ -92,6 +102,7 @@ internal static class ChestMatchFactory
         return new ChestMatch(path, matchId, players.Single(player => player.IsOwner).Name,
             owner.PlayerId!, mode, analysis.Replay.GameData.CurrentPlaylist, matchDate, players, coverage)
             { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, OpeningTimeline = timeline,
+                MatchmakingRegion = region, MatchmakingRegionCoverage = regionCoverage,
                 Rewards = orderedRewards, RewardCoverage = rewardCoverage,
                 IsStandardMode = ChestEligibility.GetMode(analysis.Replay.GameData.CurrentPlaylist,
                     analysis.Replay.GameData.IsTournamentRound, analysis.Replay.GameData.IsLargeTeamGame == true) is not null };

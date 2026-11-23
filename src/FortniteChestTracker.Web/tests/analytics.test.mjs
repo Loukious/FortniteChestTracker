@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const moduleAt = async path => import(`data:text/javascript;base64,${Buffer.from(readFileSync(new URL(path, import.meta.url), 'utf8')).toString('base64')}`);
-const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, sameComparisonGroup, barChart } = await moduleAt('../wwwroot/analytics.js');
+const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, regionKey, regionTotals, sameComparisonGroup, barChart } = await moduleAt('../wwwroot/analytics.js');
 const { treasureStatus, countdown } = await moduleAt('../wwwroot/treasure-hour.js');
 function match(times = [], seconds = 300, changes = {}) {
   return { ownerId: 'owner', playlist: 'BR', matchDate: '2026-11-23T12:00:00', recordingLengthInMs: seconds * 1000,
@@ -76,6 +76,14 @@ test('comparisons keep owners and playlists separate', () => {
   assert.equal(sameComparisonGroup(match(), match([], 300, { ownerId: 'OWNER', playlist: 'br' })), true);
   assert.equal(sameComparisonGroup(match(), match([], 300, { ownerId: 'mate' })), false);
   assert.equal(sameComparisonGroup(match(), match([], 300, { playlist: 'Rumble' })), false);
+});
+test('region comparisons pool observed minutes and keep legacy/conflicting data separate', () => {
+  const totals = regionTotals([match([10, 20], 120, { matchmakingRegion: 'EU' }), match([10], 60, { matchmakingRegion: 'eu' }),
+    match([10, 20, 30], 120, { matchmakingRegion: 'NA' }), match([10], 60), match([], 0, { matchmakingRegion: 'NA' })]);
+  assert.equal(totals.find(r => r.key === 'EU').rate, 1);
+  assert.equal(totals.find(r => r.key === 'NA').rate, 1.5);
+  assert.equal(totals.find(r => r.key === 'unknown').count, 1);
+  assert.equal(regionKey({ matchmakingRegion: '<script>' }), 'unknown');
 });
 test('SVG escapes imported labels and exposes chart data for keyboard and assistive users', () => {
   const svg = barChart([{ label: '<script>"', count: 2, matches: 1 }], { label: '<danger>', metric: 'count' });

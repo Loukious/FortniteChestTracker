@@ -35,6 +35,7 @@ public class PlayerData
     }
 
     public int? Id { get; set; }
+    public HashSet<string> ReportedMatchmakingRegions { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string? PlayerId => (IsBot == true) ? BotId : EpicId ?? PlatformUniqueNetId;
     public string? EpicId { get; set; }
     public string? PlatformUniqueNetId { get; set; }

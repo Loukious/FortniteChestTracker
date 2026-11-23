@@ -3,6 +3,24 @@ const id = value => String(value ?? '').trim().toLowerCase();
 const finiteCount = value => Number.isSafeInteger(value) && value >= 0;
 const hasUnknownTeam = match => String(match.coverage ?? '').includes('team membership unavailable');
 const inScope = (player, scope) => scope === 'squad' || (scope === 'teammates' ? !player.isOwner : player.isOwner);
+const REGION_NAMES = { EU: 'Europe', NA: 'North America', NAE: 'NA East', NAW: 'NA West', NAC: 'NA Central',
+  ASIA: 'Asia', BR: 'Brazil', OCE: 'Oceania', ME: 'Middle East', unknown: 'Unknown / conflicting' };
+export function regionKey(match) {
+  const key = String(match.matchmakingRegion ?? '').trim().toUpperCase();
+  return Object.hasOwn(REGION_NAMES, key) ? key : 'unknown';
+}
+export function regionName(key) { return REGION_NAMES[key] ?? REGION_NAMES.unknown; }
+export function regionTotals(matches, scope = 'owner') {
+  const groups = new Map();
+  for (const match of matches) {
+    const key = regionKey(match), count = recordedCount(match, scope), seconds = recordingSeconds(match);
+    if (!groups.has(key)) groups.set(key, { key, label: regionName(key), count: 0, minutes: 0, rateCount: 0, matches: 0, knownMatches: 0, partial: false, rate: null });
+    const group = groups.get(key);
+    group.matches++; group.count += count.count; group.partial ||= count.partial || !count.available;
+    if (count.available) { group.knownMatches++; if (seconds) { group.rateCount += count.count; group.minutes += seconds / 60; } }
+  }
+  return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label)).map(g => ({ ...g, rate: g.minutes > 0 ? g.rateCount / g.minutes : null }));
+}
 
 export function recordedCount(match, scope = 'owner') {
   const players = (match.players ?? []).filter(p => inScope(p, scope));

@@ -239,6 +239,8 @@ public class FortniteReplayBuilder
         }
 
         playerData.Placement ??= state.Place;
+        if (!string.IsNullOrWhiteSpace(state.KeepPlayingTogetherMatchmakingRegion))
+            playerData.ReportedMatchmakingRegions.Add(state.KeepPlayingTogetherMatchmakingRegion.Trim());
         playerData.TeamKills = state.TeamKillScore ?? playerData.TeamKills;
         playerData.Kills = state.KillScore ?? playerData.Kills;
         playerData.HasThankedBusDriver ??= state.bThankedBusDriver;

@@ -34,6 +34,8 @@ public sealed record ChestMatch(
     // Null identifies legacy reports or unavailable search data. Missing timestamps
     // remain absent; consumers compare timed events with the recorded count.
     public IReadOnlyList<ChestOpeningTime>? OpeningTimeline { get; init; }
+    public string? MatchmakingRegion { get; init; }
+    public string MatchmakingRegionCoverage { get; init; } = "Reported matchmaking region unavailable";
     public bool? IsStandardMode { get; init; }
     public IReadOnlyList<ChestReward> Rewards { get; init; } = [];
     public string RewardCoverage { get; init; } = ChestRewardCoverage.RecordedOnly;

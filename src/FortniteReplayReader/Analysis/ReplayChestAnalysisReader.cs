@@ -36,7 +36,7 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     {
         "PlayerId", "PlayerID", "UniqueId", "UniqueID", "PlatformUniqueNetId", "BotUniqueId",
         "bIsABot", "bIsSpectator", "bOnlySpectator", "TeamIndex", "Platform",
-        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId"
+        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId", "KeepPlayingTogetherMatchmakingRegion"
     };
     private static readonly HashSet<string> PawnFields = new(StringComparer.Ordinal) { "PlayerState" };
     private static readonly HashSet<string> PlaylistFields = new(StringComparer.Ordinal);
