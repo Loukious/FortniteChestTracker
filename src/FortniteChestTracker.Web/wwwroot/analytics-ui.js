@@ -5,7 +5,7 @@ export function createAnalytics({ document, window, getMatches, getSelectedMatch
   const el = id => document.getElementById(id);
   const fmt = value => value == null ? 'Unavailable' : Number(value).toLocaleString(undefined, { maximumFractionDigits: 2 });
   const key = match => JSON.stringify([match.matchId, match.ownerId]);
-  const controls = ['analytics-scope', 'analytics-region', 'calendar-group', 'calendar-metric', 'analytics-period', 'pace-window', 'pace-downtime', 'pace-view', 'pace-average-group', 'insights-early-cutoff'];
+  const controls = ['analytics-scope', 'analytics-region', 'calendar-group', 'calendar-metric', 'analytics-period', 'pace-window', 'pace-downtime', 'pace-view', 'pace-average-group', 'insights-survival-percent'];
   let chosenMatch = '', chosenRegion = '', selectedTableMatch = null;
   startTreasureTimer(document, window);
   function options(id, values, value) {
@@ -58,7 +58,7 @@ export function createAnalytics({ document, window, getMatches, getSelectedMatch
     renderInsights(match, regionMatches, scope, chosenRegion);
   }
   function renderInsights(match, matches, scope, region) {
-    const notes = farmingInsights(matches, scope, { region, earlyMinutes: el('insights-early-cutoff').value, downtimeMinutes: el('pace-downtime').value, windowMinutes: el('pace-window').value });
+    const notes = farmingInsights(matches, scope, { region, survivalPercent: el('insights-survival-percent').value, downtimeMinutes: el('pace-downtime').value, windowMinutes: el('pace-window').value });
     const hourly = group => `${fmt(group.rate * 60)} chests/hour`;
     const evidence = group => `${group.matches} matches across ${group.days} days`;
     const threshold = `at least ${notes.minMatches} matches across ${notes.minDays} days in each comparison group`;
@@ -82,15 +82,15 @@ export function createAnalytics({ document, window, getMatches, getSelectedMatch
     const percent = group => `${fmt(group.rate * 100)}%`;
     el('insight-team-stability-badge').textContent = !stability.best || stability.kind === 'single' ? 'More data needed' : Math.min(stability.best.matches, stability.runnerUp.matches) < 20 ? 'Early finding' : 'Recorded pattern';
     el('insight-team-stability-title').textContent = stability.kind === 'leader' ? stability.best.label : stability.kind === 'close' ? 'Similar recorded disconnect rates' : 'More tracking needed';
-    el('insight-team-stability-note').textContent = stability.kind === 'leader' ? `${stability.best.label} has fewer recorded teammate disconnects before replay minute ${fmt(notes.teammates.cutoff)}: ${percent(stability.best)} of tracked matches, versus ${percent(stability.runnerUp)} for ${stability.runnerUp.label}. Based on ${evidence(stability.best)} and ${evidence(stability.runnerUp)}.`
+    el('insight-team-stability-note').textContent = stability.kind === 'leader' ? `${stability.best.label} has fewer teammate disconnects while another squad member is still alive, within the first ${fmt(notes.teammates.cutoff)}% of recorded squad survival time: ${percent(stability.best)} of tracked matches, versus ${percent(stability.runnerUp)} for ${stability.runnerUp.label}. Based on ${evidence(stability.best)} and ${evidence(stability.runnerUp)}.`
       : stability.kind === 'close' ? `${stability.best.label} (${percent(stability.best)}) and ${stability.runnerUp.label} (${percent(stability.runnerUp)}) are within 10 percentage points. There is little observed difference in early disconnects.`
-      : stability.kind === 'single' ? `Only ${stability.best.label} has enough tracked matches. Rescan available replays and sample another region before comparing early disconnects.`
-      : `Need ${threshold} in two regions with disconnect tracking and recordings at least ${fmt(notes.teammates.cutoff + 1)} minutes long. Rescan available replays to add the new tracking data.`;
+      : stability.kind === 'single' ? `Only ${stability.best.label} has enough tracked matches. Rescan available replays and sample another region before comparing disconnects during squad survival.`
+      : `Need ${threshold} in two regions with disconnect and survival tracking. Rescan available replays to add the new survival data.`;
     const teammateRows = new Map();
     for (const row of notes.teammates.contribution.groups) teammateRows.set(row.key, { ...row, chestMatches: row.matches });
     for (const row of stability.groups) teammateRows.set(row.key, { ...teammateRows.get(row.key), key: row.key, label: row.label, status: row });
     el('insights-team-table').innerHTML = [...teammateRows.values()].map(g => `<tr><td>${escapeHtml(g.label)}</td><td class="number">${g.chestMatches ? fmt(g.count / g.chestMatches) : 'Unavailable'}</td><td class="number">${g.chestMatches ? fmt(g.rate * 60) : 'Unavailable'}</td><td class="number">${g.chestMatches ?? 0}</td><td class="number">${g.status?.matches ? percent(g.status) : 'Unavailable'}</td><td class="number">${g.status?.matches ?? 0}</td><td class="number">${g.status?.unavailable ?? 0}</td></tr>`).join('');
-    el('insights-team-method').textContent = `Teammate counts are recorded minimums. “Early” means a recorded disconnect before replay minute ${fmt(notes.teammates.cutoff)}, with at least one further minute recorded after that cutoff. ${stability.unavailable} matches lacked usable tracking, timing, or sufficient length. A disconnect may follow elimination or network loss; no recorded event does not prove a teammate stayed. These rates describe detected events, not the true probability of quitting.`;
+    el('insights-team-method').textContent = `“Early” means leaving while another squad member is still alive, during the first ${fmt(notes.teammates.cutoff)}% of recorded squad survival time. 100% counts any such departure, even late in a match. The owner and knocked teammates count as surviving; eliminated/disconnected players do not. Periods with no survivors and post-match exits are excluded. ${stability.unavailable} matches lack usable survival/disconnect data. This uses recorded life events; missing updates may hide deaths or departures. A disconnect does not establish a voluntary quit.`;
     el('insight-region-missing').textContent = notes.region.unknownMatches ? `${notes.region.unknownMatches} matches have no usable region and are excluded from region rankings.${notes.region.legacyMatches ? ` ${notes.region.legacyMatches} older saved records need a rescan to add regions.` : ''}` : '';
     const duration = notes.duration;
     el('insight-stop-badge').textContent = duration.kind === 'insufficient' ? 'More data needed' : Math.min(duration.matches, duration.best?.matches ?? duration.matches) < 20 ? 'Early finding' : 'Recorded pattern';
@@ -136,7 +136,7 @@ export function createAnalytics({ document, window, getMatches, getSelectedMatch
     if (id === 'analytics-region') chosenRegion = el(id).value;
     if (id === 'calendar-group') el('analytics-period').value = '';
     if (id === 'pace-downtime') el(id).value = String(Math.min(60, Math.max(0, Number(el(id).value) || 0)));
-    if (id === 'insights-early-cutoff') el(id).value = String(Math.min(30, Math.max(2, Number(el(id).value) || 5)));
+    if (id === 'insights-survival-percent') el(id).value = String(Math.min(100, Math.max(1, Number(el(id).value) || 100)));
     savePreferences(); render();
   });
   el('pace-scope').addEventListener('change', () => { el('analytics-scope').value = el('pace-scope').value; savePreferences(); render(); });
@@ -151,7 +151,7 @@ export function createAnalytics({ document, window, getMatches, getSelectedMatch
     for (const [id, values] of Object.entries({ 'analytics-scope': ['owner', 'teammates', 'squad'], 'calendar-group': ['day', 'week'],
       'calendar-metric': ['count', 'rate'], 'pace-window': ['1', '2', '5'], 'pace-view': ['match', 'average'], 'pace-average-group': ['same', 'all'] })) if (values.includes(data?.[id])) el(id).value = data[id];
     if (data && Number.isFinite(Number(data['pace-downtime']))) el('pace-downtime').value = String(Math.min(60, Math.max(0, Number(data['pace-downtime']))));
-    if (data && Number.isFinite(Number(data['insights-early-cutoff']))) el('insights-early-cutoff').value = String(Math.min(30, Math.max(2, Number(data['insights-early-cutoff']))));
+    if (data && Number.isFinite(Number(data['insights-survival-percent']))) el('insights-survival-percent').value = String(Math.min(100, Math.max(1, Number(data['insights-survival-percent']) || 100)));
   } catch { /* Optional preferences. */ }
   let lastDay = calendarKey(Date.now());
   const timer = window.setInterval?.(() => {

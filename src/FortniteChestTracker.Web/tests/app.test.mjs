@@ -6,6 +6,7 @@ const uiSource = readFileSync(new URL('../wwwroot/analytics-ui.js', import.meta.
 // Load native ESM modules with data URLs; wwwroot has no Node package metadata.
 const analyticsUrl = `data:text/javascript;base64,${Buffer.from(readFileSync(new URL('../wwwroot/analytics.js', import.meta.url), 'utf8')).toString('base64')}`;
 const treasureUrl = `data:text/javascript;base64,${Buffer.from(readFileSync(new URL('../wwwroot/treasure-hour.js', import.meta.url), 'utf8')).toString('base64')}`;
+const { analyzeTeamDisconnects } = await import(analyticsUrl);
 const { createAnalytics } = await import(`data:text/javascript;base64,${Buffer.from(uiSource.replace('./analytics.js', analyticsUrl).replace('./treasure-hour.js', treasureUrl)).toString('base64')}`);
 
 const source = readFileSync(new URL('../wwwroot/app.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '');
@@ -82,7 +83,7 @@ function loadApp(windowOptions = {}, historySeed = []) {
       const read = history.read;
       history.read = async () => { await seeded; return read(); };
       return history;
-    }, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup, createAnalytics, PARSER_CACHE_VERSION: 'test-parser',
+    }, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup, createAnalytics, analyzeTeamDisconnects, PARSER_CACHE_VERSION: 'test-parser',
     HTMLInputElement: Element, Date, Intl, console, Set, Map, WeakMap });
   vm.runInContext(source, context);
   return { elements, workers, run: code => vm.runInContext(code, context),
@@ -296,7 +297,7 @@ test('squad details distinguish recorded disconnect times from legacy unavailabl
     playerDisconnects: [{ playerId: 'teammate', replayTimeSeconds: 121 }] })]);
   app.elements.get('include-history').checked = true;
   await app.run('state.historyReady');
-  assert.equal(app.elements.get('squad-body').children[1].children[6].textContent, 'First recorded 02:01');
+  assert.match(app.elements.get('squad-body').children[1].children[6].textContent, /First recorded 02:01.*survival unknown/);
   assert.equal(app.elements.get('squad-body').children[0].children[6].textContent, 'None recorded');
   app.run('state.selectedMatch.disconnectMonitoringAvailable = null; renderSquad();');
   assert.equal(app.elements.get('squad-body').children[0].children[6].textContent, 'Not tracked · rescan');

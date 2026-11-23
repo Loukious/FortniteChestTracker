@@ -12,6 +12,7 @@ public sealed record ReplayChestOpening(uint ChestActorGuid, string ChestClass, 
 }
 
 public sealed record ReplayPlayerDisconnect(uint PlayerStateActorGuid, string? PlayerId, float? ReplayTimeSeconds);
+public sealed record ReplayPlayerSurvival(uint PlayerStateActorGuid, string? PlayerId, bool IsAlive, float? ReplayTimeSeconds, string Evidence);
 
 /// <summary>Counts are an observed minimum; local replays do not record every distant teammate interaction.</summary>
 public sealed record ReplayChestAnalysis(FortniteReplay Replay, IReadOnlyList<ReplayChestOpening> Openings,
@@ -23,6 +24,84 @@ public sealed record ReplayChestAnalysis(FortniteReplay Replay, IReadOnlyList<Re
     public bool HasGrantDecodeErrors { get; init; }
     public IReadOnlyList<ReplayPlayerDisconnect> Disconnects { get; init; } = [];
     public bool DisconnectMonitoringAvailable { get; init; }
+    public IReadOnlyList<ReplayPlayerSurvival> Survival { get; init; } = [];
+    public bool SurvivalMonitoringAvailable { get; init; }
+}
+
+internal sealed class ReplaySurvivalAccumulator
+{
+    private sealed class PlayerStatus
+    {
+        internal bool? Alive;
+        internal bool Ended;
+        internal bool Disconnected;
+        internal uint Reboots;
+        internal uint? Pawn;
+    }
+    private readonly Dictionary<uint, PlayerStatus> players = [];
+    private readonly Dictionary<uint, uint> pawnPlayers = [];
+    private readonly Dictionary<uint, bool> dyingPawns = [];
+    private readonly List<(uint Actor, bool Alive, float? Time, string Evidence)> events = [];
+    private bool matchEnded;
+    private PlayerStatus Player(uint actor)
+    {
+        if (!players.TryGetValue(actor, out var player)) players[actor] = player = new();
+        return player;
+    }
+    private void SetAlive(uint actor, bool alive, float? time, string evidence)
+    {
+        var player = Player(actor);
+        if (player.Alive == alive) return;
+        player.Alive = alive;
+        events.Add((actor, alive, time, evidence));
+    }
+    internal void UpdatePawn(uint pawn, uint? playerState, bool? dying, float? time)
+    {
+        if (matchEnded) return;
+        if (dying is bool value) dyingPawns[pawn] = value;
+        if (playerState is > 0 && !pawnPlayers.ContainsKey(pawn))
+        {
+            pawnPlayers[pawn] = playerState.Value;
+            Player(playerState.Value).Pawn = pawn;
+        }
+        if (!pawnPlayers.TryGetValue(pawn, out var actor)) return;
+        var player = Player(actor);
+        // An older corpse must not eliminate a player's newer rebooted pawn.
+        if (player.Pawn != pawn || player.Ended || player.Disconnected) return;
+        var isDying = dyingPawns.GetValueOrDefault(pawn);
+        SetAlive(actor, !isDying, time, isDying ? "Pawn dying" : "Live pawn observed");
+    }
+    internal void UpdatePlayer(uint actor, bool? knocked, uint? reboots, int? place, bool? disconnected, float? time)
+    {
+        if (matchEnded) return;
+        var player = Player(actor);
+        if (disconnected is bool value) player.Disconnected = value;
+        if (place == 0) player.Ended = false;
+        if (reboots is uint count && count > player.Reboots)
+        {
+            player.Reboots = count;
+            player.Ended = false;
+            if (!player.Disconnected) SetAlive(actor, true, time, "Reboot recorded");
+        }
+        if (knocked == true && !player.Ended && !player.Disconnected)
+            SetAlive(actor, true, time, "Knocked, not eliminated");
+        // Placement marks the end of this player's participation, including a
+        // winner's post-match interval. It is not a team-wide death signal.
+        if (place is > 0)
+        {
+            player.Ended = true;
+            SetAlive(actor, false, time, "Participation ended");
+        }
+        if (player.Disconnected) SetAlive(actor, false, time, "Disconnected");
+    }
+    internal void EndMatch(float? time)
+    {
+        if (matchEnded) return;
+        matchEnded = true;
+        foreach (var actor in players.Keys.ToArray()) SetAlive(actor, false, time, "Match ended");
+    }
+    internal IReadOnlyList<ReplayPlayerSurvival> Finish(IReadOnlyDictionary<uint, string> identities) =>
+        events.Select(e => new ReplayPlayerSurvival(e.Actor, identities.GetValueOrDefault(e.Actor), e.Alive, e.Time, e.Evidence)).ToArray();
 }
 
 internal sealed class ReplayDisconnectAccumulator

@@ -22,7 +22,10 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private readonly ReplayTreasureRewardAccumulator rewardData = new();
     private readonly ReplayTreasureGrantAccumulator grantData = new();
     private readonly ReplayDisconnectAccumulator disconnectData = new();
+    private readonly ReplaySurvivalAccumulator survivalData = new();
     private bool disconnectMonitoringAvailable;
+    private bool survivalPawnFieldsAvailable;
+    private bool survivalOutcomeFieldsAvailable;
     private readonly Dictionary<uint, uint> pawnStates = [];
     private readonly Dictionary<uint, string> playerStates = [];
     private readonly HashSet<uint> knownPlayerStates = [];
@@ -32,15 +35,16 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
     private readonly HashSet<NetFieldExportGroup> filteredGroups = [];
     private static readonly HashSet<string> GameFields = new(StringComparer.Ordinal)
     {
-        "RecorderPlayerState", "GameSessionId", "UtcTimeStartedMatch", "EventTournamentRound", "bIsLargeTeamGame", "TeamSize"
+        "RecorderPlayerState", "GameSessionId", "UtcTimeStartedMatch", "EventTournamentRound", "bIsLargeTeamGame", "TeamSize", "WinningTeam"
     };
     private static readonly HashSet<string> PlayerFields = new(StringComparer.Ordinal)
     {
         "PlayerId", "PlayerID", "UniqueId", "UniqueID", "PlatformUniqueNetId", "BotUniqueId",
         "bIsABot", "bIsSpectator", "bOnlySpectator", "TeamIndex", "Platform",
-        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId", "KeepPlayingTogetherMatchmakingRegion", "bIsDisconnected"
+        "PlayerNameCustomOverride", "StreamerModeName", "bIsGameSessionOwner", "PartyOwnerUniqueId", "KeepPlayingTogetherMatchmakingRegion", "bIsDisconnected",
+        "bDBNO", "RebootCounter", "Place"
     };
-    private static readonly HashSet<string> PawnFields = new(StringComparer.Ordinal) { "PlayerState" };
+    private static readonly HashSet<string> PawnFields = new(StringComparer.Ordinal) { "PlayerState", "bIsDying" };
     private static readonly HashSet<string> PlaylistFields = new(StringComparer.Ordinal);
     private int searchFieldsDecoded;
     private int decodeErrors;
@@ -87,7 +91,8 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         return new(replay, openings, diagnostics.ToArray(), chestData.ChestActorsSeen, searchFieldsDecoded, decodeErrors > 0)
             { Rewards = rewards, HasRewardDecodeErrors = rewardDecodeErrors > 0,
                 Grants = grants, HasGrantDecodeErrors = grantDecodeErrors > 0,
-                Disconnects = disconnectData.Finish(playerStates), DisconnectMonitoringAvailable = disconnectMonitoringAvailable };
+                Disconnects = disconnectData.Finish(playerStates), DisconnectMonitoringAvailable = disconnectMonitoringAvailable,
+                Survival = survivalData.Finish(playerStates), SurvivalMonitoringAvailable = survivalPawnFieldsAvailable && survivalOutcomeFieldsAvailable };
     }
 
     public override void ReadReplayInfo(FArchive archive)
@@ -238,6 +243,10 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
         exportGroup = null;
         if (group.PathName == "/Script/FortniteGame.FortPlayerStateAthena" && group.NetFieldExports.Any(field => field?.Name == "bIsDisconnected"))
             disconnectMonitoringAvailable = true;
+        if (group.PathName == "/Script/FortniteGame.FortPlayerStateAthena" && group.NetFieldExports.Any(field => field?.Name == "Place"))
+            survivalOutcomeFieldsAvailable = true;
+        if (group.PathName == "/Game/Athena/PlayerPawn_Athena.PlayerPawn_Athena_C" && group.NetFieldExports.Any(field => field?.Name == "bIsDying"))
+            survivalPawnFieldsAvailable = true;
         if (ReplayTreasureRewardDecoder.IsRewardGroup(group) && Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint rewardActor)
         {
             if (!rewardData.ReadUpdate(rewardActor, group, archive, enablePropertyChecksum, currentTime)) rewardDecodeErrors++;
@@ -369,20 +378,25 @@ public sealed class ReplayChestAnalysisReader : ReplayReader
 
     protected override void OnExportRead(uint channelIndex, INetFieldExportGroup? exportGroup)
     {
+        if (exportGroup is GameState game && game.WinningTeam is > 0) survivalData.EndMatch(currentTime);
         if (Channels[channelIndex]?.Actor?.ActorNetGUID.Value is uint actor)
         {
-            if (exportGroup is PlayerPawn pawn && pawn.PlayerState is uint playerState && playerState != 0)
-                pawnStates[actor] = playerState;
+            if (exportGroup is PlayerPawn pawn)
+            {
+                if (pawn.PlayerState is uint playerState && playerState != 0) pawnStates[actor] = playerState;
+                survivalData.UpdatePawn(actor, pawn.PlayerState, pawn.bIsDying, currentTime);
+            }
             else if (exportGroup is FortPlayerState state)
             {
                 knownPlayerStates.Add(actor);
                 var id = state.bIsABot == true ? state.BotUniqueId : state.UniqueId ?? state.UniqueID ?? state.PlatformUniqueNetId;
                 if (!string.IsNullOrWhiteSpace(id)) playerStates[actor] = id;
                 disconnectData.Update(actor, state.bIsDisconnected, currentTime);
+                survivalData.UpdatePlayer(actor, state.bDBNO, state.RebootCounter, state.Place, state.bIsDisconnected, currentTime);
             }
         }
-        // PlayerPawn is used only for actor attribution above; its gameplay and
-        // cosmetic updates do not contribute to the chest report.
+        // Pawn updates contribute attribution and survival observations only;
+        // unrelated gameplay and cosmetic state is not retained in this report.
         if (exportGroup is GameState or PlaylistInfo or FortPlayerState)
             base.OnExportRead(channelIndex, exportGroup);
     }

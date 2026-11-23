@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 const moduleAt = async path => import(`data:text/javascript;base64,${Buffer.from(readFileSync(new URL(path, import.meta.url), 'utf8')).toString('base64')}`);
-const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, regionKey, regionTotals, sameComparisonGroup, farmingInsights, timeOfDayTotals, teammateRegionInsights, barChart } = await moduleAt('../wwwroot/analytics.js');
+const { paceBins, timedRecording, cycleEstimate, calendarKey, periodTotals, regionKey, regionTotals, sameComparisonGroup, farmingInsights, timeOfDayTotals, teammateRegionInsights, analyzeTeamDisconnects, squadSurvivalWindow, barChart } = await moduleAt('../wwwroot/analytics.js');
 const { treasureStatus, countdown } = await moduleAt('../wwwroot/treasure-hour.js');
 function match(times = [], seconds = 300, changes = {}) {
   return { ownerId: 'owner', playlist: 'BR', matchDate: '2026-11-23T12:00:00', recordingLengthInMs: seconds * 1000,
@@ -174,6 +174,9 @@ function teammateMatches(region, earlyCount = 0) {
   return farmingMatches(5, { region, timed: true }).map((m, i) => ({ ...m,
     players: [...m.players, { playerId: 'mate', isOwner: false, chests: region === 'NA' ? 20 : 10, coverage: 'Complete chest data' }],
     disconnectMonitoringAvailable: true,
+    survivalMonitoringAvailable: true,
+    squadSurvivalTimeline: [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 },
+      { playerId: 'owner', isAlive: false, replayTimeSeconds: 540 }, { playerId: 'mate', isAlive: false, replayTimeSeconds: 540 }],
     playerDisconnects: i < earlyCount ? [{ playerId: 'MATE', replayTimeSeconds: 120 }] : []
   }));
 }
@@ -184,18 +187,18 @@ test('teammate contribution and recorded disconnect rates can favor different re
   assert.equal(notes.stability.best.key, 'EU');
   assert.equal(notes.stability.runnerUp.rate, .6);
 });
-test('early disconnects are distinct from owner exits, later departures, and repeated teammate events', () => {
+test('disconnects after the squad ends are distinct from owner exits and repeated teammate events', () => {
   const matches = teammateMatches('EU').map((m, i) => ({ ...m, playerDisconnects: i === 0 ? [
-    { playerId: 'owner', replayTimeSeconds: 50 }, { playerId: 'mate', replayTimeSeconds: 500 }
+    { playerId: 'owner', replayTimeSeconds: 50 }, { playerId: 'mate', replayTimeSeconds: 550 }
   ] : i === 1 ? [{ playerId: 'mate', replayTimeSeconds: 120 }, { playerId: 'mate', replayTimeSeconds: 121 }] : [] }));
   const result = teammateRegionInsights(matches);
   assert.equal(result.stability.best.disconnectMatches, 1);
   assert.equal(result.stability.best.rate, .2);
 });
-test('legacy/short/untimed recordings are unavailable tracking, rather than evidence of teammates staying', () => {
+test('legacy/missing-survival/untimed recordings are unavailable rather than evidence of staying', () => {
   const matches = teammateMatches('EU');
   matches[0].disconnectMonitoringAvailable = null;
-  matches[1].recordingLengthInMs = 300000;
+  matches[1].squadSurvivalTimeline = null;
   matches[2].playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: null }];
   const result = teammateRegionInsights(matches);
   assert.equal(result.stability.groups[0].matches, 2);
@@ -203,13 +206,68 @@ test('legacy/short/untimed recordings are unavailable tracking, rather than evid
   assert.equal(result.stability.kind, 'insufficient');
   assert.equal(result.contribution.groups[0].matches, 5);
 });
-test('disconnect cutoff is adjustable and recordings need a minute beyond it', () => {
+test('disconnect cutoff uses percentage of recorded survival instead of an absolute minute', () => {
   const matches = teammateMatches('EU', 5);
-  const earlier = teammateRegionInsights(matches, { earlyMinutes: 2 });
-  assert.equal(earlier.stability.best.rate, 0); // Exactly at the cutoff is not before it.
-  const later = teammateRegionInsights(matches, { earlyMinutes: 3 });
+  const earlier = teammateRegionInsights(matches, { survivalPercent: 20 });
+  assert.equal(earlier.stability.best.rate, 0);
+  const later = teammateRegionInsights(matches, { survivalPercent: 30 });
   assert.equal(later.stability.best.rate, 1);
-  assert.equal(teammateRegionInsights(matches, { earlyMinutes: 10 }).stability.kind, 'insufficient');
+  assert.equal(teammateRegionInsights(matches, { survivalPercent: 100 }).stability.best.rate, 1);
+});
+
+test('everyone dead at minute one makes their later disconnects normal exits', () => {
+  const m = teammateMatches('EU')[0];
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 },
+    { playerId: 'owner', isAlive: false, replayTimeSeconds: 60 }, { playerId: 'mate', isAlive: false, replayTimeSeconds: 60 }];
+  m.playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: 61 }];
+  const result = analyzeTeamDisconnects(m);
+  assert.equal(result.window.totalSeconds, 60);
+  assert.equal(result.premature, false);
+  assert.equal(result.events[0].otherAlive, false);
+  assert.equal(result.events[0].survivalPercent, 100);
+});
+test('a minute-ten departure counts while another teammate survives, even if the departing player already died', () => {
+  const m = teammateMatches('EU')[0];
+  m.recordingLengthInMs = 1500000;
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 },
+    { playerId: 'mate', isAlive: false, replayTimeSeconds: 60 }, { playerId: 'owner', isAlive: false, replayTimeSeconds: 1200 }];
+  m.playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: 600 }];
+  const result = analyzeTeamDisconnects(m);
+  assert.equal(result.premature, true);
+  assert.equal(result.events[0].survivalPercent, 50);
+  assert.equal(analyzeTeamDisconnects(m, 40).premature, false);
+});
+test('team-dead gaps are excluded from cumulative survival time and exits during those gaps are normal', () => {
+  const m = teammateMatches('EU')[0];
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 },
+    { playerId: 'owner', isAlive: false, replayTimeSeconds: 60 }, { playerId: 'mate', isAlive: false, replayTimeSeconds: 60 },
+    { playerId: 'owner', isAlive: true, replayTimeSeconds: 180 }, { playerId: 'owner', isAlive: false, replayTimeSeconds: 300 }];
+  m.playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: 120 }, { playerId: 'mate', replayTimeSeconds: 240 }];
+  const result = analyzeTeamDisconnects(m);
+  assert.equal(result.window.totalSeconds, 180);
+  assert.equal(result.events[0].premature, false);
+  assert.equal(result.events[1].premature, true);
+  assert.ok(Math.abs(result.events[1].survivalPercent - 200 / 3) < 1e-9);
+});
+test('a sole surviving player disconnecting has no remaining survivor and is not an early team departure', () => {
+  const m = teammateMatches('EU')[0];
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: false, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 }];
+  m.playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: 120 }];
+  assert.equal(analyzeTeamDisconnects(m).premature, false);
+  assert.equal(squadSurvivalWindow(m).totalSeconds, 120);
+});
+test('a teammate departing at a censored recording endpoint still counts if someone else is alive', () => {
+  const m = teammateMatches('EU')[0];
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'mate', isAlive: true, replayTimeSeconds: 0 }];
+  m.playerDisconnects = [{ playerId: 'mate', replayTimeSeconds: 600 }];
+  assert.equal(analyzeTeamDisconnects(m).premature, true);
+  assert.equal(analyzeTeamDisconnects(m).events[0].survivalPercent, 100);
+});
+test('unknown internal survival gaps cannot be turned into a precise percentage', () => {
+  const m = teammateMatches('EU')[0];
+  m.squadSurvivalTimeline = [{ playerId: 'owner', isAlive: true, replayTimeSeconds: 0 }, { playerId: 'owner', isAlive: false, replayTimeSeconds: 60 }];
+  m.playerDisconnects = [];
+  assert.equal(squadSurvivalWindow(m), null);
 });
 test('Treasure Hour transitions start inclusively, end exclusively, and stop after listed dates', () => {
   const before = treasureStatus(Date.parse('2026-11-28T18:59:59Z'));

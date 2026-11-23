@@ -109,6 +109,16 @@ public class ChestRosterTest
         Assert.Equal("OWNER", match.PlayerDisconnects[0].PlayerId);
         Assert.Null(match.PlayerDisconnects[1].ReplayTimeSeconds);
     }
+    [Fact]
+    public void SurvivalTimelineRetainsOnlyHumanSquadIdentitiesAndMonitoringCoverage()
+    {
+        var match = Build("match-a", [Player("owner", 4), Player("teammate", 4), Player("enemy", 7), Player("bot", 4, true)], [],
+            survival: [new(1, "OWNER", true, 0, "Live pawn observed"), new(2, "teammate", false, 10, "Pawn dying"),
+                new(3, "enemy", true, 0, "Live pawn observed"), new(4, "bot", true, 0, "Live pawn observed")], survivalMonitoring: true);
+        Assert.True(match.SurvivalMonitoringAvailable);
+        Assert.Equal(2, match.SquadSurvivalTimeline!.Count);
+        Assert.Equal(["OWNER", "teammate"], match.SquadSurvivalTimeline.Select(p => p.PlayerId));
+    }
 
     [Fact]
     public void AnonymousMembersCannotBeJoinedAcrossSeparateMatches()
@@ -142,7 +152,7 @@ public class ChestRosterTest
     }
 
     private static ChestMatch Build(string matchId, FortPlayerState[] players, ReplayChestOpening[] openings, int fields = 1,
-        ReplayPlayerDisconnect[]? disconnects = null, bool monitoring = false)
+        ReplayPlayerDisconnect[]? disconnects = null, bool monitoring = false, ReplayPlayerSurvival[]? survival = null, bool survivalMonitoring = false)
     {
         var builder = new FortniteReplayBuilder();
         for (uint channel = 0; channel < players.Length; channel++) builder.UpdatePlayerState(channel, players[channel]);
@@ -150,7 +160,8 @@ public class ChestRosterTest
         replay.GameData.CurrentPlaylist = "Playlist_DefaultSquad";
         var owner = replay.PlayerData.Single(player => player.PlayerId == "owner");
         owner.IsReplayOwner = true;
-        return ChestMatchFactory.Build(new(replay, openings, [], 1, fields, false) { Disconnects = disconnects ?? [], DisconnectMonitoringAvailable = monitoring }, owner,
+        return ChestMatchFactory.Build(new(replay, openings, [], 1, fields, false) { Disconnects = disconnects ?? [], DisconnectMonitoringAvailable = monitoring,
+            Survival = survival ?? [], SurvivalMonitoringAvailable = survivalMonitoring }, owner,
             Path.Combine(Path.GetTempPath(), matchId + ".replay"), matchId, "Battle Royale · Build", new(2026, 11, 10));
     }
 

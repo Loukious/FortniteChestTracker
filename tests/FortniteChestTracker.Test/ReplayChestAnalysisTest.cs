@@ -409,15 +409,16 @@ public class ReplayChestAnalysisTest
     }
 
     [Fact]
-    public void ChestReportPawnOnlyNeedsPlayerStateAttribution()
+    public void ChestReportPawnRetainsAttributionAndDyingState()
     {
         var group = Group("/Game/Athena/PlayerPawn_Athena.PlayerPawn_Athena_C",
-            "PlayerState", "ReplicatedMovement", "PrimaryAssets", "Dances", "CurrentWeapon");
+            "PlayerState", "bIsDying", "ReplicatedMovement", "PrimaryAssets", "Dances", "CurrentWeapon");
 
         ReplayChestAnalysisReader.KeepReportFields(group);
 
         Assert.False(group.NetFieldExports[0].Incompatible);
-        Assert.All(group.NetFieldExports.Skip(1), field => Assert.True(field.Incompatible));
+        Assert.False(group.NetFieldExports[1].Incompatible);
+        Assert.All(group.NetFieldExports.Skip(2), field => Assert.True(field.Incompatible));
     }
 
     private static ReplayBits Property(uint handle, ReplayBits value) =>

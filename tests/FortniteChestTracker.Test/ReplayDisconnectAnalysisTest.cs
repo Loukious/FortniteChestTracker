@@ -7,6 +7,48 @@ namespace FortniteReplayReader.Test;
 public class ReplayDisconnectAnalysisTest
 {
     [Fact]
+    public void SurvivalEndsOnEliminationAndRestartsOnReboot()
+    {
+        var data = new ReplaySurvivalAccumulator();
+        data.UpdatePawn(10, 100, false, 0);
+        data.UpdatePlayer(100, true, null, null, null, 30);
+        data.UpdatePawn(10, null, true, 60);
+        data.UpdatePlayer(100, null, 1, null, null, 120);
+        data.UpdatePawn(12, 100, false, 120);
+        data.UpdatePawn(10, null, true, 121);
+        data.UpdatePlayer(100, null, null, 2, null, 180);
+        var points = data.Finish(new Dictionary<uint, string> { [100] = "owner" });
+        Assert.Equal([true, false, true, false], points.Select(p => p.IsAlive));
+        Assert.Equal([0f, 60f, 120f, 180f], points.Select(p => p.ReplayTimeSeconds!.Value));
+    }
+
+    [Fact]
+    public void PlacementAndMatchEndStopSurvivalEvenIfThePawnRemainsVisible()
+    {
+        var data = new ReplaySurvivalAccumulator();
+        data.UpdatePawn(10, 100, false, 0);
+        data.UpdatePlayer(100, null, null, 1, null, 60);
+        data.UpdatePawn(10, null, false, 61);
+        Assert.Equal([true, false], data.Finish(new Dictionary<uint, string>()).Select(p => p.IsAlive));
+        var winner = new ReplaySurvivalAccumulator();
+        winner.UpdatePawn(12, 200, false, 0);
+        winner.EndMatch(100);
+        winner.UpdatePawn(14, 200, false, 101);
+        Assert.Equal([true, false], winner.Finish(new Dictionary<uint, string>()).Select(p => p.IsAlive));
+    }
+
+    [Fact]
+    public void DisconnectsRemoveSurvivalAndRespawnedPawnsReestablishIt()
+    {
+        var data = new ReplaySurvivalAccumulator();
+        data.UpdatePawn(10, 100, false, 0);
+        data.UpdatePlayer(100, null, null, null, true, 60);
+        data.UpdatePawn(10, null, false, 61);
+        data.UpdatePlayer(100, null, null, null, false, 70);
+        data.UpdatePawn(12, 100, false, 71);
+        Assert.Equal([true, false, true], data.Finish(new Dictionary<uint, string>()).Select(p => p.IsAlive));
+    }
+    [Fact]
     public void FirstTrueFlagIsRecordedAndRepeatedFlagsDoNotDuplicateIt()
     {
         var data = new ReplayDisconnectAccumulator();

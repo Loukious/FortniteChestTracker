@@ -159,29 +159,79 @@ export function timeOfDayTotals(matches, scope = 'owner', downtimeMinutes = 3) {
     .sort((a, b) => Number(a.key) - Number(b.key));
 }
 
-export function teammateRegionInsights(matches, { earlyMinutes = 5, downtimeMinutes = 3 } = {}) {
-  const cutoff = Math.min(30, Math.max(2, Number(earlyMinutes) || 5));
+export function squadSurvivalWindow(match) {
+  const seconds = recordingSeconds(match);
+  if (!seconds || match.survivalMonitoringAvailable !== true || !Array.isArray(match.squadSurvivalTimeline)) return null;
+  const ids = new Set((match.players ?? []).map(p => id(p.playerId)));
+  const points = match.squadSurvivalTimeline.filter(p => p && ids.has(id(p.playerId)));
+  if (!points.length || points.some(p => typeof p.isAlive !== 'boolean' || !Number.isFinite(p.replayTimeSeconds) || p.replayTimeSeconds < 0 || p.replayTimeSeconds > seconds)) return null;
+  // Disconnects make a player unavailable; their stale pawn cannot keep the
+  // survival window open after they have left. Elimination events at a shared
+  // timestamp are applied before judging whether anyone remains alive.
+  const departures = (Array.isArray(match.playerDisconnects) ? match.playerDisconnects : []).filter(d => d && ids.has(id(d.playerId)));
+  if (departures.some(d => !Number.isFinite(d.replayTimeSeconds) || d.replayTimeSeconds < 0 || d.replayTimeSeconds > seconds)) return null;
+  const timeline = [...points.map(p => ({ playerId: id(p.playerId), alive: p.isAlive, time: p.replayTimeSeconds })),
+    ...departures.map(d => ({ playerId: id(d.playerId), alive: false, time: d.replayTimeSeconds }))]
+    .sort((a, b) => a.time - b.time);
+  const states = new Map(), intervals = [];
+  let started = false, previous = 0, unknownSeconds = 0;
+  for (let i = 0; i < timeline.length;) {
+    const time = timeline[i].time;
+    const alive = [...states.values()].some(Boolean);
+    if (started && time > previous) {
+      if (alive) intervals.push({ start: previous, end: time });
+      else if (states.size < ids.size) unknownSeconds += time - previous;
+    }
+    while (i < timeline.length && timeline[i].time === time) {
+      const point = timeline[i++]; states.set(point.playerId, point.alive);
+    }
+    if ([...states.values()].some(Boolean)) started = true;
+    previous = time;
+  }
+  const aliveAtEnd = [...states.values()].some(Boolean);
+  if (started && previous < seconds) {
+    if (aliveAtEnd) intervals.push({ start: previous, end: seconds });
+    else if (states.size < ids.size) unknownSeconds += seconds - previous;
+  }
+  const totalSeconds = intervals.reduce((sum, span) => sum + span.end - span.start, 0);
+  if (!started || totalSeconds <= 0 || unknownSeconds > 0) return null;
+  return { totalSeconds, intervals, timeline, censored: aliveAtEnd };
+}
+
+export function analyzeTeamDisconnects(match, survivalPercent = 100) {
+  const window = squadSurvivalWindow(match);
+  if (!window || match.disconnectMonitoringAvailable !== true || !Array.isArray(match.playerDisconnects)) return null;
+  const cutoff = Math.min(100, Math.max(1, Number(survivalPercent) || 100));
+  const teammates = new Set((match.players ?? []).filter(p => !p.isOwner).map(p => id(p.playerId)));
+  const events = match.playerDisconnects.filter(d => d && teammates.has(id(d.playerId))).map(d => {
+    const time = d.replayTimeSeconds, states = new Map();
+    for (const point of window.timeline) { if (point.time > time) break; states.set(point.playerId, point.alive); }
+    const otherAlive = [...states].some(([playerId, alive]) => playerId !== id(d.playerId) && alive);
+    const elapsed = window.intervals.reduce((sum, span) => sum + Math.max(0, Math.min(time, span.end) - span.start), 0);
+    const percent = 100 * elapsed / window.totalSeconds;
+    return { ...d, otherAlive, survivalPercent: percent, premature: otherAlive && percent <= cutoff + 1e-9 };
+  });
+  return { window, events, cutoff, premature: events.some(d => d.premature) };
+}
+
+export function teammateRegionInsights(matches, { survivalPercent = 100, downtimeMinutes = 3 } = {}) {
+  const cutoff = Math.min(100, Math.max(1, Number(survivalPercent) || 100));
   const downtime = Math.min(60, Math.max(0, Number(downtimeMinutes) || 0));
   const chestSamples = farmingSamples(matches, 'teammates').filter(s => (s.match.players ?? []).some(p => !p.isOwner));
   const contribution = rankFarmingGroups(farmingGroups(chestSamples.filter(s => regionKey(s.match) !== 'unknown'), regionKey, regionName, downtime));
   const groups = new Map();
   let unavailable = 0;
   for (const match of matches) {
-    const region = regionKey(match), seconds = recordingSeconds(match), day = calendarKey(match.matchDate);
+    const region = regionKey(match), day = calendarKey(match.matchDate);
     const teammates = (match.players ?? []).filter(p => !p.isOwner);
     if (!day || region === 'unknown' || !teammates.length || teammates.some(p => !p.playerId || String(p.playerId).startsWith('unknown:')) || hasUnknownTeam(match) || /unreadable/i.test(match.coverage ?? '')) continue;
     if (!groups.has(region)) groups.set(region, { key: region, label: regionName(region), matches: 0, disconnectMatches: 0, days: new Set(), unavailable: 0 });
-    const group = groups.get(region), ids = new Set(teammates.map(p => id(p.playerId)));
-    const observations = Array.isArray(match.playerDisconnects) ? match.playerDisconnects.filter(d => d && ids.has(id(d.playerId))) : [];
-    // Count detected events, never infer staying from a lack of events. Require
-    // a full cutoff plus one minute of continued recording to avoid normal exits
-    // near the replay end. Unknown event timing cannot become a negative result.
-    if (!seconds || seconds < (cutoff + 1) * 60 || match.disconnectMonitoringAvailable !== true ||
-      !Array.isArray(match.playerDisconnects) || observations.some(d => !Number.isFinite(d.replayTimeSeconds) || d.replayTimeSeconds < 0 || d.replayTimeSeconds > seconds)) {
+    const group = groups.get(region), assessment = analyzeTeamDisconnects(match, cutoff);
+    if (!assessment) {
       group.unavailable++; unavailable++; continue;
     }
     group.matches++; group.days.add(day);
-    if (observations.some(d => d.replayTimeSeconds < cutoff * 60)) group.disconnectMatches++;
+    if (assessment.premature) group.disconnectMatches++;
   }
   const stabilityGroups = [...groups.values()].map(g => ({ ...g, days: g.days.size,
     rate: g.matches ? g.disconnectMatches / g.matches : null,
@@ -193,7 +243,7 @@ export function teammateRegionInsights(matches, { earlyMinutes = 5, downtimeMinu
   return { contribution, stability, cutoff, downtime };
 }
 
-export function farmingInsights(matches, scope = 'owner', { downtimeMinutes = 3, windowMinutes = 2, region = '', earlyMinutes = 5 } = {}) {
+export function farmingInsights(matches, scope = 'owner', { downtimeMinutes = 3, windowMinutes = 2, region = '', survivalPercent = 100 } = {}) {
   const downtime = Math.min(60, Math.max(0, Number(downtimeMinutes) || 0));
   const samples = farmingSamples(matches, scope);
   const regions = rankFarmingGroups(farmingGroups(samples.filter(s => regionKey(s.match) !== 'unknown'), regionKey, regionName, downtime));
@@ -228,7 +278,7 @@ export function farmingInsights(matches, scope = 'owner', { downtimeMinutes = 3,
       : duration.improvement >= .05 ? 'restart' : 'continue';
   }
   return { scope, samples: samples.length, excluded: matches.length - samples.length, region: regions, time, duration,
-    teammates: teammateRegionInsights(matches, { earlyMinutes, downtimeMinutes: downtime }),
+    teammates: teammateRegionInsights(matches, { survivalPercent, downtimeMinutes: downtime }),
     selectedRegion: region, downtime, minMatches: INSIGHT_MIN_MATCHES, minDays: INSIGHT_MIN_DAYS };
 }
 

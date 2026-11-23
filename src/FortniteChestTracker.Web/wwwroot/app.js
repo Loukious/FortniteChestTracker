@@ -2,6 +2,7 @@ import { ReplayScanner } from './scanner-pool.js';
 import { createMatchHistory, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup } from './match-history.js';
 import { PARSER_CACHE_VERSION } from './replay-cache.js';
 import { createAnalytics } from './analytics-ui.js';
+import { analyzeTeamDisconnects } from './analytics.js';
 
 const byId = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
@@ -528,6 +529,7 @@ function renderSquad() {
   }
   ui['selected-match-summary'].textContent = `${formatDate(match.matchDate)} · ${match.playlist} · ${match.coverage}`;
   ui['selected-match-reward-summary'].textContent = rewardCoverage(match);
+  const disconnectAssessment = analyzeTeamDisconnects(match);
   const rows = document.createDocumentFragment();
   for (const player of [...(match.players ?? [])].sort((a, b) => Number(b.isOwner) - Number(a.isOwner))) {
     const row = document.createElement('tr');
@@ -535,8 +537,12 @@ function renderSquad() {
     rewards.title = rewardCoverage(match);
     const disconnects = (Array.isArray(match.playerDisconnects) ? match.playerDisconnects : []).filter(d => d && caseKey(d.playerId) === caseKey(player.playerId));
     const disconnectTime = disconnects.length ? formatReplayTime(disconnects[0].replayTimeSeconds) : '';
-    const disconnect = match.disconnectMonitoringAvailable == null ? 'Not tracked · rescan' : match.disconnectMonitoringAvailable !== true || !Array.isArray(match.playerDisconnects) ? 'Unavailable' :
+    let disconnect = match.disconnectMonitoringAvailable == null ? 'Not tracked · rescan' : match.disconnectMonitoringAvailable !== true || !Array.isArray(match.playerDisconnects) ? 'Unavailable' :
       disconnects.length ? disconnectTime === 'Time unavailable' ? 'Recorded · time unavailable' : `First recorded ${disconnectTime}` : 'None recorded';
+    if (!player.isOwner && disconnects.length) {
+      const event = disconnectAssessment?.events.find(d => caseKey(d.playerId) === caseKey(player.playerId));
+      disconnect += event ? ` · ${number.format(Math.round(event.survivalPercent * 100) / 100)}% of squad survival · ${event.otherAlive ? 'another squadmate alive' : 'no other survivor'}` : ' · survival unknown (rescan)';
+    }
     row.append(cell(player.name), cell(player.isOwner ? 'Replay owner' : 'Teammate'), cell(formatCount(player.chests, player.coverage), 'number'), rewards, cell(player.coverage), cell(player.playerId), cell(disconnect));
     rows.append(row);
   }

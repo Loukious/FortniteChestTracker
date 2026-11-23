@@ -9,7 +9,8 @@ const TRUSTED_CACHE_VERSIONS = [
   'chest-parser-2026-11-23-persistent-history-v1',
   'chest-parser-2026-11-23-timeline-v1',
   'chest-parser-2026-11-23-timeline-v2-region',
-  'chest-parser-2026-11-23-timeline-v3-teammates'
+  'chest-parser-2026-11-23-timeline-v3-teammates',
+  'chest-parser-2026-11-23-timeline-v4-survival'
 ];
 const STANDARD = new Set(['playlist_defaultsolo', 'playlist_defaultduo', 'playlist_defaulttrio', 'playlist_trios',
   'playlist_defaultsquad', 'playlist_nobuildbr_solo', 'playlist_nobuildbr_duo', 'playlist_nobuildbr_trio', 'playlist_nobuildbr_squad']);

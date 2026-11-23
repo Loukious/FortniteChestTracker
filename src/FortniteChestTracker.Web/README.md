@@ -232,12 +232,22 @@ for restart advice. Small supported samples are labelled early findings.
 Teammate notes independently rank teammate chest contribution and recorded early
 disconnects for the same player/playlist across known regions. Disconnects use
 explicit `bIsDisconnected` updates with replay times, deduplicate repeated flags,
-and allow a separate event after reconnection. Squad details show recorded times.
-The early cutoff defaults to five replay minutes and is adjustable. Comparisons
-require recording through that cutoff plus one minute, adequate samples on two
-days, and the new disconnect monitoring data. Short, legacy, untimed, or unsupported
-records are unavailable rather than proof of staying. End-of-replay exits are not
-counted as early. Rates describe detected events, not the true probability of
+and allow a separate event after reconnection. Squad details show recorded times
+and progress through the recorded squad survival window. Survival uses observed
+pawns, dying flags, knocked states, reboots, individual participation endings,
+and winning-team announcements. Older corpse updates do not override a newer pawn.
+
+The departure cutoff defaults to 100% of cumulative recorded time with at least
+one active squad member, including the owner and knocked players. Team-dead gaps
+are excluded; reboots/respawns can restart the window. A departure counts only
+while another squad member remains alive and within the selected percentage.
+Leaving after everyone is eliminated or the match has finished does not count.
+There is no fixed-minute cutoff or minimum recording length. Unknown internal
+survival gaps and missing/unsupported survival data remain unavailable, never a
+fallback to full replay duration. A window still active at recording end is
+limited to the observed portion. Comparisons require adequate samples on two
+days. Legacy records need a rescan for survival data. Rates describe detected
+events, not the true probability of
 voluntary quitting; disconnects may follow elimination or network loss, and distant
 events may be absent. Unknown regions cannot be ranked. Older aggregate history
 can still support teammate chest contribution when its region/counts are known.

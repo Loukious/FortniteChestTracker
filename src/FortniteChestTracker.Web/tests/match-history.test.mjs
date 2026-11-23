@@ -101,6 +101,20 @@ test('new disconnect tracking enriches saved matches and survives older backups'
   assert.deepEqual(restored[0].playerDisconnects, disconnects);
   assert.equal(restored[0].disconnectMonitoringAvailable, true);
 });
+test('survival enrichment survives an older disconnect-only backup without duplicating counts', async () => {
+  const storage = new Storage();
+  const old = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v3-teammates' });
+  await old.saveMatch(match({ playerDisconnects: [], disconnectMonitoringAvailable: true }));
+  const backup = await old.backup();
+  const current = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v4-survival' });
+  const points = [{ playerId: 'player-a', isAlive: true, replayTimeSeconds: 0 }];
+  await current.saveMatch(match({ squadSurvivalTimeline: points, survivalMonitoringAvailable: true }));
+  await current.saveRecord(backup.records[0]);
+  const saved = (await current.read()).matches;
+  assert.equal(saved.length, 1);
+  assert.deepEqual(saved[0].squadSurvivalTimeline, points);
+  assert.equal(saved[0].players[0].chests, 7);
+});
 
 test('match and player IDs preserve one result across copies, names, and visits', async () => {
   const storage = new Storage();
