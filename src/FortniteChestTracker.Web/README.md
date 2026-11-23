@@ -274,10 +274,13 @@ Google's genuine `gtag.js` executes in an empty iframe with `sandbox="allow-scri
 and an opaque origin. It cannot read the parent DOM, replay files, localStorage,
 IndexedDB or native cookies. A validated postMessage channel passes only the
 public configuration, random usage ID and allowlisted event names. The frame has
-its own restricted CSP and no referrer. All Google storage/advertising consent is
-denied; Google signals and ad personalization are disabled. An inert empty cookie
-interface prevents gtag bootstrap cookie reads from throwing in the sandbox; it
-never stores or accesses real cookies. Global gtag defaults are set before loading
+its own restricted CSP and no referrer. Analytics consent is granted only inside
+the opted-in frame; advertising consent stays denied. Google signals and ad
+personalization are disabled. A volatile cookie interface and a JS-readable
+origin label let gtag initialize in the sandbox without reading or writing native
+cookies. Shadowing that label does not change the browser's actual opaque origin
+or relax any security boundary. The cookie jar exists only in frame memory and
+disappears when the frame is removed. Global gtag defaults are set before loading
 the library to cover remotely configured initialization. Google library changes
 can affect this isolated integration; verify with the genuine SDK when updating
 it. Load failures/timeouts leave replay processing usable and analytics off.

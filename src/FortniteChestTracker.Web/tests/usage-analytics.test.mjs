@@ -140,9 +140,12 @@ test('Collector ignores untrusted configurations and unlisted event payloads', (
   send(data); assert.equal(scripts.length, 1); scripts[0].onload();
   send({ type: 'event', channel, name: 'scan_started', playerId: 'PRIVATE' }); send({ type: 'event', channel, name: 'PRIVATE' });
   const commands = JSON.parse(vm.runInContext('JSON.stringify(dataLayer.map(c => Array.from(c)))', context));
-  assert.equal(commands[0][2].analytics_storage, 'denied'); assert.equal(commands.filter(c => c[0] === 'event').length, 1);
+  assert.equal(commands[0][2].analytics_storage, 'granted'); assert.equal(commands.filter(c => c[0] === 'event').length, 1);
   assert.ok(!JSON.stringify(commands).includes('PRIVATE'));
   assert.equal(vm.runInContext('document.cookie', context), '');
+  document.cookie = '_ga=GA1.1.random; path=/'; document.cookie = 'private-report=PRIVATE';
+  assert.equal(document.cookie, '_ga=GA1.1.random');
+  document.cookie = '_ga=deleted; max-age=0'; assert.equal(document.cookie, '');
   send({ type: 'disable', channel }); send({ type: 'event', channel, name: 'scan_started' });
   assert.equal(vm.runInContext("window['ga-disable-G-ZM2VXKTLBC']", context), true);
   assert.equal(vm.runInContext('dataLayer.filter(c => c[0] === "event").length', context), 1);
