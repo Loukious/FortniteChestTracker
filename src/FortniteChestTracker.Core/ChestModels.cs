@@ -5,6 +5,7 @@ public sealed record ChestScanProgress(int Completed, int Total, string FileName
 public sealed record SkippedReplay(string FileName, string Reason);
 
 public sealed record ChestPlayer(string Name, string PlayerId, bool IsOwner, int? Chests, string Coverage);
+public sealed record ChestOpeningTime(string PlayerId, float ReplayTimeSeconds);
 
 public sealed record ChestReward(
     string PlayerName, string? PlayerId, bool IsOwner, bool IsTeammate,
@@ -30,6 +31,9 @@ public sealed record ChestMatch(
 {
     public string FileName => Path.GetFileName(FilePath);
     public uint RecordingLengthInMs { get; init; }
+    // Null identifies legacy reports or unavailable search data. Missing timestamps
+    // remain absent; consumers compare timed events with the recorded count.
+    public IReadOnlyList<ChestOpeningTime>? OpeningTimeline { get; init; }
     public bool? IsStandardMode { get; init; }
     public IReadOnlyList<ChestReward> Rewards { get; init; } = [];
     public string RewardCoverage { get; init; } = ChestRewardCoverage.RecordedOnly;

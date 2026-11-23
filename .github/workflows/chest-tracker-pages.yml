@@ -67,6 +67,9 @@ jobs:
           test -f artifacts/FortniteChestTracker.Web/wwwroot/scanner-pool.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/replay-cache.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/match-history.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/analytics.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/analytics-ui.js
+          test -f artifacts/FortniteChestTracker.Web/wwwroot/treasure-hour.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/_framework/dotnet.js
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/GPL-3.0.txt
           test -f artifacts/FortniteChestTracker.Web/wwwroot/licenses/DOTNET-MIT.txt

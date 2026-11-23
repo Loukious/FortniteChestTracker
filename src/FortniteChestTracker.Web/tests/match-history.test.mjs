@@ -59,6 +59,24 @@ const match = (overrides = {}) => ({ matchId: 'match-a', ownerId: 'player-a', ow
   filePath: 'Demos/UnsavedReplay-original.replay', recordingLengthInMs: 600000, coverage: 'Opened counts',
   players: [{ playerId: 'player-a', name: 'Player A', isOwner: true, chests: 7, coverage: 'Opened counts' }], rewards: [], ...overrides });
 
+test('timeline enrichment replaces legacy results and persists through reload and backup import', async () => {
+  const storage = new Storage();
+  const old = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-persistent-history-v1' });
+  await old.saveMatch(match());
+  const oldBackup = await old.backup();
+  const current = createMatchHistory({ indexedDB: storage, parserVersion: 'chest-parser-2026-11-23-timeline-v1' });
+  const timeline = Array.from({ length: 7 }, (_, i) => ({ playerId: 'player-a', replayTimeSeconds: i * 30 }));
+  await current.saveMatch(match({ openingTimeline: timeline }));
+  await current.saveRecord(oldBackup.records[0]);
+  const restored = (await createMatchHistory({ indexedDB: storage }).read()).matches;
+  assert.equal(restored.length, 1);
+  assert.deepEqual(restored[0].openingTimeline, timeline);
+  assert.equal(restored[0].players[0].chests, 7);
+  const imported = createMatchHistory({ indexedDB: null });
+  for (const record of parseHistoryBackup(JSON.stringify(await current.backup()))) await imported.saveRecord(record);
+  assert.deepEqual((await imported.read()).matches[0].openingTimeline, timeline);
+});
+
 test('match and player IDs preserve one result across copies, names, and visits', async () => {
   const storage = new Storage();
   const history = createMatchHistory({ indexedDB: storage });

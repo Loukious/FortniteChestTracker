@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import vm from 'node:vm';
+const uiSource = readFileSync(new URL('../wwwroot/analytics-ui.js', import.meta.url), 'utf8');
+// Load native ESM modules with data URLs; wwwroot has no Node package metadata.
+const analyticsUrl = `data:text/javascript;base64,${Buffer.from(readFileSync(new URL('../wwwroot/analytics.js', import.meta.url), 'utf8')).toString('base64')}`;
+const treasureUrl = `data:text/javascript;base64,${Buffer.from(readFileSync(new URL('../wwwroot/treasure-hour.js', import.meta.url), 'utf8')).toString('base64')}`;
+const { createAnalytics } = await import(`data:text/javascript;base64,${Buffer.from(uiSource.replace('./analytics.js', analyticsUrl).replace('./treasure-hour.js', treasureUrl)).toString('base64')}`);
 
 const source = readFileSync(new URL('../wwwroot/app.js', import.meta.url), 'utf8').replace(/^import .*;\r?\n/gm, '');
 const historySource = readFileSync(new URL('../wwwroot/match-history.js', import.meta.url), 'utf8');
@@ -55,6 +60,7 @@ function loadApp(windowOptions = {}, historySeed = []) {
     return tab;
   });
   getElement('since').value = '2026-11-01';
+  for (const [id, value] of Object.entries({ 'analytics-scope': 'owner', 'calendar-group': 'day', 'calendar-metric': 'count', 'pace-window': '2', 'pace-downtime': '3' })) getElement(id).value = value;
   const workers = [];
   class Worker {
     constructor() { this.listeners = new Map(); workers.push(this); }
@@ -76,7 +82,7 @@ function loadApp(windowOptions = {}, historySeed = []) {
       const read = history.read;
       history.read = async () => { await seeded; return read(); };
       return history;
-    }, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup, PARSER_CACHE_VERSION: 'test-parser',
+    }, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup, createAnalytics, PARSER_CACHE_VERSION: 'test-parser',
     HTMLInputElement: Element, Date, Intl, console, Set, Map, WeakMap });
   vm.runInContext(source, context);
   return { elements, workers, run: code => vm.runInContext(code, context),
@@ -205,6 +211,19 @@ test('saved results load without replays or starting a parser', async () => {
   assert.equal(app.workers.length, 0);
   assert.equal(app.elements.get('match-total').textContent, '1');
   assert.match(app.elements.get('report-summary').textContent, /Saved match history/);
+});
+
+test('saved-history analytics show daily and weekly graphs and retain legacy totals', async () => {
+  const app = loadApp({}, [match({ matchDate: new Date().toISOString(), recordingLengthInMs: 60000 })]);
+  app.elements.get('include-history').checked = true;
+  await app.run('state.historyReady');
+  assert.equal(app.elements.get('daily-total').textContent, '7');
+  assert.equal(app.elements.get('weekly-total').textContent, '7');
+  assert.match(app.elements.get('calendar-chart').innerHTML, /<svg/);
+  assert.match(app.elements.get('pace-summary').textContent, /timing unavailable/);
+  app.elements.get('calendar-group').value = 'week';
+  app.elements.get('calendar-group').listeners.get('change')();
+  assert.match(app.elements.get('calendar-chart').innerHTML, /Weekly owner/);
 });
 
 test('rotation and repeated scans retain prior matches without accumulating copies', async () => {

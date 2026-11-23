@@ -18,6 +18,11 @@
       <p class="intro">Opened counts for the replay owner and their teammates, plus recorded treasure rewards, in Battle Royale and Zero Build. Enable other Battle Royale modes to include Respawn Rumble and more.</p>
     </header>
 
+    <section class="panel treasure-panel" aria-labelledby="treasure-heading">
+      <div><h2 id="treasure-heading">Treasure Hour</h2><p class="treasure-state" id="treasure-state">Checking schedule…</p></div>
+      <div class="treasure-details"><p class="treasure-countdown" id="treasure-countdown" role="timer" aria-live="off"></p><p class="hint" id="treasure-time"></p><p class="hint">Expected windows may change. <a href="https://chestcounterfortnite.com/treasure-hours" target="_blank" rel="noopener noreferrer">Schedule &amp; announcements</a> · Schedule checked November 23, 2026.</p></div>
+    </section>
+
     <section class="panel selection-panel" aria-labelledby="selection-heading">
       <div class="section-heading">
         <div><h2 id="selection-heading">Choose your replay folder</h2><p class="muted">Select your saved replays, then choose which files to scan.</p></div>
@@ -91,6 +96,34 @@
       </div>
       <p class="coverage-note"><strong>Opened</strong> includes normal openings and destroyed unopened chests attributed to players in the replay. A chest that resets and is opened or destroyed again counts again; repeated updates within the same opening count once. Counts are the minimum confirmed by the recording. <strong>+</strong> means more chests may be missing, especially from distant teammates. <strong>Unknown</strong> means unavailable data; totals exclude it.</p>
       <p class="coverage-note">Reward counts include recorded observations in each replay. Nearby players outside your squad appear as <strong>Other player</strong> in Rewards when their reward is recorded. <strong>None recorded</strong> does not mean no reward was received. Treasure receipts without a prize ID appear as <strong>Treasure (unknown type)</strong>; they may include Gizmos or shared teammate rewards.</p>
+      <section class="panel analytics-panel" aria-labelledby="analytics-heading">
+        <div class="section-heading"><div><h2 id="analytics-heading">Chest activity &amp; pace</h2><p class="muted">Explore your saved matches to see when looting slows down.</p></div><label class="analytics-field">Count for<select id="analytics-scope"><option value="owner">Replay owner</option><option value="teammates">Teammates</option><option value="squad">Whole squad</option></select></label></div>
+        <div class="activity-cards">
+          <article><h3>Today · Opened</h3><p class="summary-value" id="daily-total">0</p><p class="muted" id="daily-rate"></p></article>
+          <article><h3>This week · Opened</h3><p class="summary-value" id="weekly-total">0</p><p class="muted" id="weekly-rate"></p></article>
+          <article><h3>Selected period · Opened</h3><p class="summary-value" id="period-total">0</p><p class="muted" id="period-label"></p></article>
+        </div>
+        <div class="analytics-controls">
+          <label class="analytics-field">Calendar view<select id="calendar-group"><option value="day">Daily</option><option value="week">Weekly</option></select></label>
+          <label class="analytics-field">Graph measure<select id="calendar-metric"><option value="count">Opened total</option><option value="rate">Opened per recorded minute</option></select></label>
+          <label class="analytics-field">Compare matches from<select id="analytics-period"><option value="">All included dates</option></select></label>
+        </div>
+        <p class="hint" id="calendar-summary"></p>
+        <div class="chart-scroll" id="calendar-chart" tabindex="0" aria-label="Daily or weekly chest activity graph"></div>
+        <details class="analytics-data"><summary>View daily/weekly data</summary><div class="table-scroll" tabindex="0"><table><thead><tr><th>Local period start</th><th class="number">Opened</th><th class="number">Opened/min</th><th class="number">Matches</th><th class="number">Recorded minutes</th><th>Rate coverage</th></tr></thead><tbody id="calendar-table"></tbody></table></div></details>
+        <div class="pace-heading"><h2>Openings throughout a match</h2><p class="hint">Replay minute 0 is the start of the recording, including any lobby/drop time. Bars show the selected match; the line shows the pooled rate for the same owner and playlist in the chosen period.</p></div>
+        <div class="analytics-controls">
+          <label class="analytics-field pace-match-field">Match<select id="pace-match" aria-label="Match for pace analysis"></select></label>
+          <label class="analytics-field">Time window<select id="pace-window"><option value="1">1 minute</option><option value="2" selected>2 minutes</option><option value="5">5 minutes</option></select></label>
+          <label class="analytics-field">Queue/loading estimate (minutes)<input id="pace-downtime" type="number" min="0" max="60" step="0.5" value="3"></label>
+        </div>
+        <p class="hint" id="pace-summary"></p><p class="hint timing-note" id="pace-missing" hidden></p>
+        <div class="chart-legend"><span><i class="legend-bar"></i>Selected match</span><span><i class="legend-line"></i>Same owner &amp; playlist</span></div>
+        <div class="chart-scroll" id="pace-chart" tabindex="0" aria-label="Chest openings per replay minute graph"></div>
+        <p class="pace-estimate" id="pace-estimate"></p>
+        <p class="hint">The cutoff estimate compares recorded openings before each window boundary against elapsed recording time plus your downtime estimate. It cannot predict the next match. Later windows include only surviving recordings, and recorded time may extend past active play. Distant openings can be missing.</p>
+        <details class="analytics-data"><summary>View match pace data</summary><div class="table-scroll" tabindex="0"><table><thead><tr><th>Replay window</th><th class="number">Selected opened</th><th class="number">Selected opened/min</th><th class="number">Observed minutes</th><th class="number">Comparison opened/min</th><th class="number">Contributing matches</th></tr></thead><tbody id="pace-table"></tbody></table></div></details>
+      </section>
       <section class="panel matches-panel" aria-labelledby="matches-heading">
         <div class="section-heading"><h2 id="matches-heading">Matches</h2><p class="muted" id="matches-hint">Select a match for its squad breakdown.</p></div>
         <div class="table-scroll matches-scroll" tabindex="0" aria-label="Eligible matches">

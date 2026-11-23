@@ -32,6 +32,12 @@ internal static class ChestMatchFactory
         var unresolved = analysis.Openings.Count(opening => opening.PlayerId is null);
         if (unresolved > 0) coverage += $"; {unresolved} openings have no identified player";
         if (owner.TeamIndex is null or <= 0) coverage += "; team membership unavailable";
+        var squadIds = players.Select(player => player.PlayerId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var timeline = available ? analysis.Openings.Where(opening => opening.PlayerId is not null &&
+            squadIds.Contains(opening.PlayerId) && opening.ReplayTimeSeconds is float time &&
+            float.IsFinite(time) && time >= 0)
+            .Select(opening => new ChestOpeningTime(opening.PlayerId!, opening.ReplayTimeSeconds!.Value))
+            .OrderBy(opening => opening.ReplayTimeSeconds).ToArray() : null;
         var rewards = analysis.Rewards
             .DistinctBy(reward => (reward.RewardActorGuid, reward.PrizeIndex))
             .Select(reward =>
@@ -85,7 +91,8 @@ internal static class ChestMatchFactory
             rewardCoverage += " Some reward recipients could not be identified.";
         return new ChestMatch(path, matchId, players.Single(player => player.IsOwner).Name,
             owner.PlayerId!, mode, analysis.Replay.GameData.CurrentPlaylist, matchDate, players, coverage)
-            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, Rewards = orderedRewards, RewardCoverage = rewardCoverage,
+            { RecordingLengthInMs = analysis.Replay.Info.LengthInMs, OpeningTimeline = timeline,
+                Rewards = orderedRewards, RewardCoverage = rewardCoverage,
                 IsStandardMode = ChestEligibility.GetMode(analysis.Replay.GameData.CurrentPlaylist,
                     analysis.Replay.GameData.IsTournamentRound, analysis.Replay.GameData.IsLargeTeamGame == true) is not null };
     }

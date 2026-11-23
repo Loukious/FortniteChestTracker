@@ -170,6 +170,33 @@ runtime can load. Relative asset URLs also support a GitHub Pages repository pat
 When a change alters parsing, eligibility, ownership, or chest counts, bump
 `PARSER_CACHE_VERSION` in `wwwroot/replay-cache.js` to invalidate earlier results.
 
+## Chest analytics
+
+The activity panel shows today's and this Monday-based week's recorded totals,
+plus daily/weekly charts of openings or pooled openings per recorded minute.
+Calendar grouping uses the browser's local timezone. Report date, mode, history,
+and owner filters apply; the analytics period selector narrows the match pace
+comparison. Scope can be owner, teammates, or squad.
+
+Match pace uses timestamped openings in 1/2/5 minute windows from replay minute 0,
+including recorded lobby/drop time. Partial final windows use their actual
+duration; ended replays contribute no later exposure. The comparison line pools
+only the same replay owner and playlist. Missing or invalid timestamps exclude a
+recording from pace comparisons without removing saved totals. Rescanning an
+available replay enriches older saved history; rotated files cannot recover times.
+
+The cutoff estimate uses observed openings before each time boundary divided by
+elapsed recording time plus a user-entered queue/loading estimate per replay. It
+is descriptive, with later-window survivor bias and incomplete replay coverage;
+it does not predict rewards or guarantee a useful leave time. Daily/weekly rates
+use aggregate counts paired with available recording durations, so legacy history
+can contribute even without opening timestamps.
+
+Treasure Hour uses explicit UTC sessions in `wwwroot/treasure-hour.js`, converted
+to local time. Upcoming November 28/29 sessions are labelled expected until
+confirmed. After the listed schedule expires, the timer shows no upcoming window
+and links to the announcement source; it never extrapolates new sessions.
+
 ## Deploy to GitHub Pages
 
 In the destination repository's **Settings → Pages**, set **Source** to **GitHub

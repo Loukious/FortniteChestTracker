@@ -1,6 +1,7 @@
 import { ReplayScanner } from './scanner-pool.js';
 import { createMatchHistory, mergeSavedMatches, filterSavedMatches, historyKey, parseHistoryBackup } from './match-history.js';
 import { PARSER_CACHE_VERSION } from './replay-cache.js';
+import { createAnalytics } from './analytics-ui.js';
 
 const byId = (id) => document.getElementById(id);
 const ui = Object.fromEntries([
@@ -20,6 +21,7 @@ const state = {
   savedFolder: null, savedFolderVersion: 0
 };
 const history = createMatchHistory({ parserVersion: PARSER_CACHE_VERSION });
+const analytics = createAnalytics({ document, window, getMatches: () => state.visibleMatches, getSelectedMatch: () => state.selectedMatch });
 Object.assign(state, { historyMatches: [], currentReport: null, historyAvailable: false, historyLoading: true,
   historyBusy: false, historySaving: false, reportFromHistory: false, historyTask: Promise.resolve() });
 const relativePaths = new WeakMap();
@@ -511,6 +513,7 @@ function renderFilteredReport() {
   renderSquad();
   renderPlayerTotals(matches);
   renderRewards(matches);
+  analytics.render();
 }
 
 function renderSquad() {
@@ -818,6 +821,7 @@ ui['matches-body'].addEventListener('click', (event) => {
     matchRow.setAttribute('aria-selected', String(selected));
   }
   renderSquad();
+  analytics.render();
 });
 for (const tab of document.querySelectorAll('[role=tab]')) {
   tab.addEventListener('click', () => selectTab(tab.id));
